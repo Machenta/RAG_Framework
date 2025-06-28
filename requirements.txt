@@ -37,7 +37,6 @@ PyJWT==2.10.1
 pyodbc==5.2.0
 pytest==8.4.1
 PyYAML==6.0.2
--e c:\repos\rag_framework
 regex==2024.11.6
 requests==2.32.4
 setuptools==80.9.0
