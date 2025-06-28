@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag_shared"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+  "PyYAML",
+  "azure-identity",
+  "azure-keyvault-secrets",
+  "azure-search-documents",
+  "openai",
+  "httpx",
+  "asyncpg",
+  "pyodbc",
+  "jinja2",
+  "dacite",
+]
+
+[tool.setuptools]
+include-package-data = true                     # keep non-Python assets
+
+# Automatically find all sub-packages under project root
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rag_shared", "rag_shared.*"]
+exclude = ["rag_shared.resources*", "rag_shared.tests*"]

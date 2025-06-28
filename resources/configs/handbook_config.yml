@@ -1,0 +1,69 @@
+app:
+  name: "MyChatApp"
+  deployment: "production"
+
+  fetchers:
+    RestAPIFetcher:
+      processor: flatten_user_dict
+      params:
+        base_url: "https://jsonplaceholder.typicode.com"
+        token: ""
+
+    AzureSearchFetcher:
+      processor: noop
+      params:
+        # required
+        query: ""                       # e.g. will be filled from your orchestrator build_args
+        filter: ""                      # e.g. "speaker eq 'David'"
+        # optional with defaults
+        top_k: 5
+        skip: 0
+        include_total_count: true
+        facets:
+          - "speaker,count:5"
+          - "topic"
+        highlight_fields:
+          - "text"
+        search_fields: null             # or omit entirely if you want server defaults
+        select_fields:
+          - "id"
+          - "filename"
+          - "block_id"
+          - "chunk_index"
+          - "part"
+          - "speaker"
+          - "timestamp"
+          - "tokens"
+          - "video_url"
+          - "keyword"
+          - "topic"
+          - "text"
+        semantic: false
+        semantic_config: null
+        vector_search: true
+        hybrid: null
+        vector_field: "contentVector"
+
+  llm:
+    type: azure_openai
+    processor: default
+    params:
+      prompt_folder: "recovered_space"
+      system_prompt: "system_prompt.j2"
+      prompt: "chat_prompt.j2"
+      default_max_tokens: 200
+      default_temperature: 0.2
+
+  index:
+    name: "test_transcript"
+    skillset_name: "chat-skillset"
+    indexer_name: "chat-indexer"
+    indexes_path: "AI_search_indexes"
+    index_yml_path: "transcripts.yml"
+    vector_dim: 1536
+    vector_field: "contentVector"
+    index_text_field: "text"
+
+  other:
+    debug: true
+    log_level: INFO

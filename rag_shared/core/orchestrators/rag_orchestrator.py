@@ -1,0 +1,200 @@
+import asyncio
+import logging as log
+from typing import Sequence, Dict, Any, List, Optional
+
+from rag_shared.core.fetchers.base import DataFetcher
+from rag_shared.core.models.base import LLMModel
+from rag_shared.core.prompt_builders.base import PromptBuilder
+from rag_shared.utils.config import Config
+from rag_shared.core.fetchers.registry import get_processor
+
+class RagOrchestrator:
+    def __init__(
+        self,
+        fetchers: Sequence[DataFetcher],
+        model: LLMModel,
+        prompt_builder: PromptBuilder,
+        config: Config,
+        default_proc: str = "default",
+        system_prompt: Optional[str] = None
+    ):
+        self.fetchers       = fetchers
+        self.model          = model
+        self.prompt_builder = prompt_builder
+        self.default_proc   = default_proc
+        self.config         = config
+        self.system_prompt  = system_prompt
+
+    async def __call__(
+        self,
+        user_question: str,
+        fetch_args: Dict[str, Dict[str, Any]] | None = None,
+        history:      List[Dict[str, str]]        | None = None,
+        **model_kwargs: Any
+    ) -> Dict[str, Any]:
+
+        fetch_args = fetch_args or {}
+        history    = history or []
+
+        # ── 1. collect raw data from every fetcher ──────────────────
+        gathered: Dict[str, Dict[str, Any]] = {}
+
+        if self.fetchers:
+            print("Step 1: Fetching data from all sources...")
+
+            async def _one(fetcher):
+                name = fetcher.__class__.__name__
+                args = fetch_args.get(name, {})
+
+                try:
+                    raw = await fetcher.fetch(**args)
+                except ValueError as exc:               # ← fetcher signalled “no data”
+                    log.warning("%s returned no data: %s", name, exc)
+                    return name, {}                     # empty dict keeps pipeline alive
+                except Exception as exc:                # ← network, auth, etc.
+                    log.exception("%s failed: %s", name, exc)
+                    return name, {}
+
+                # ── post-process if we got something ────────────────
+                if not raw:
+                    log.info("%s produced an empty payload.", name)
+                    return name, {}
+
+                # choose processor: arg-override → YAML → default
+                proc_name = (
+                    args.get("processor")
+                    or getattr(self.config.app.fetchers.AzureSearchFetcher, "processor", None) #type: ignore
+                    or self.default_proc
+                )
+                if not proc_name:
+                    log.warning("No processor configured for %s; skipping.", name)
+                    return name, {}
+
+                processed = get_processor(name, proc_name)(raw)
+                return name, processed
+
+            # schedule them concurrently
+            pairs = await asyncio.gather(*[_one(f) for f in self.fetchers])
+            gathered = {k: v for k, v in pairs if v}    # drop empties
+        # else: gathered stays {}
+
+        # 2 ─ craft prompt or chat messages
+        print("Step 2: Building prompt from fetched data")
+        print(f"[RagOrchestrator] Gathered data: {gathered}")
+        built = self.prompt_builder.build(gathered, user_question)
+        print(f"[RagOrchestrator] Generated prompt/messages:\n{built}\n")
+
+        # 3 ─ LLM call with memory
+        print("Step 3: Calling LLM with prompt and history")
+        messages: List[Dict[str, str]] = list(history)
+
+        if self.system_prompt:
+            messages.append({"role": "system", "content": self.system_prompt})
+
+        if isinstance(built, list):
+            messages.extend(built)
+        else:
+            messages.append({"role": "user", "content": built})
+        print(f"[RagOrchestrator] Full chat messages:\n{messages}\n")
+
+        response = await self.model.generate(messages=messages, **model_kwargs)
+        print(f"[RagOrchestrator] Model response:\n{response}\n")
+
+        # 4 - Extract metadata from AzureSearchFetcher if present
+        metadata: List[Dict[str, Any]] = []
+        azure = gathered.get("AzureSearchFetcher", {})
+        for doc in azure.get("results", []):
+            metadata.append({
+                "video_url": doc.get("video_url"),
+                "timestamp": doc.get("timestamp"),
+                "filename":  doc.get("filename")
+            })
+
+        # 5 - Build updated history
+        new_history = []
+        # preserve system prompt in returned history
+        if self.system_prompt:
+            new_history.append({"role": "system", "content": self.system_prompt})
+        new_history.extend(history)
+        new_history.append({"role": "user",      "content": built if isinstance(built, str) else ""})
+        new_history.append({"role": "assistant", "content": response})
+
+        # 6 - Return answer, metadata, and updated history
+        return {
+            "answer":   response,
+            "metadata": metadata,
+            "history":  new_history
+        }
+
+
+
+if __name__ == "__main__":
+    import asyncio
+    import os
+    from rag_shared.utils.config import Config
+    from rag_shared.core.fetchers.azure_search.azure_search import AzureSearchFetcher
+    from rag_shared.core.models.azure_openai import AzureOpenAIModel
+    from rag_shared.core.prompt_builders.template import TemplatePromptBuilder
+
+    KEY_VAULT_NAME = os.getenv("KEY_VAULT_NAME", "RecoveredSpacesKV")
+    CONFIG_PATH    = os.getenv("CONFIG_PATH",    "configs")
+    CONFIG_FILE    = os.getenv("CONFIG_FILE",    "recovered_config.yml")
+
+    # 1 - Load your config
+    cfg = Config(key_vault_name="RecoveredSpacesKV", config_filename="recovered_config.yml", config_folder="resources/configs")
+
+    # 2 - Instantiate the Azure Search fetcher
+    azure_fetcher = AzureSearchFetcher(config=cfg)
+
+    with open(os.path.join("resources", "prompts", "system_prompt.j2"),encoding="utf-8") as fh:
+        system_prompt = fh.read()
+
+    # 3 - Instantiate Model
+    llm_model = AzureOpenAIModel(
+        cfg,
+        system_prompt=system_prompt,
+        default_max_tokens=200,
+        default_temperature=0.2
+    )
+
+    # 4 - Load the default prompt template and create a PromptBuilder
+    default_tpl = open(os.path.join("resources/prompts", "default_prompt_with_json.j2")).read()
+    builder     = TemplatePromptBuilder(default_tpl)
+    # 5 - Build the orchestrator with your fetcher, model, and prompt builder
+    orchestrator = RagOrchestrator(
+        fetchers       = [azure_fetcher],
+        model          = llm_model,
+        prompt_builder = builder,
+        config= cfg,
+    )
+
+    # 6 - Define the user question and the fetch_args for AzureSearchFetcher
+    user_question = "Who is David?"
+    fetch_args = {
+        "AzureSearchFetcher": {
+            "query": user_question,
+            "filter": "",
+            "top_k": 5,
+            "include_total_count": True,
+            "facets": ["speaker,count:5", "topic"],
+            "highlight_fields": ["text"],
+            "select_fields": [
+                "id","filename","block_id","chunk_index","part","speaker",
+                "timestamp","tokens","video_url","keyword","topic","text"
+            ],
+            "vector_search": True
+        }
+    }
+
+    # 7 - Kick off the orchestration
+    async def main():
+        print("\n===== ORCHESTRATION DEMO (Real Services) =====\n")
+        print(f"User question: {user_question}")
+        print(f"Fetch arguments:\n{fetch_args}\n")
+
+        result = await orchestrator(user_question, fetch_args)
+
+        print("===== ORCHESTRATION COMPLETE =====")
+        print(f"Final result:\n{result}\n")
+
+    asyncio.run(main())

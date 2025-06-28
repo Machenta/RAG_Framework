@@ -1,0 +1,124 @@
+name: test_trancript
+
+fields:
+  - name: id
+    type: String
+    key: true
+    searchable: true
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  - name: block_id
+    type: String
+    searchable: true
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  - name: chunk_index
+    type: Int32
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  - name: part
+    type: String
+    searchable: true
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  - name: tokens
+    type: Int32
+    filterable: true
+    retrievable: true
+
+  - name: timestamp
+    type: Double
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  - name: text
+    type: String
+    searchable: true
+    filterable: true
+    retrievable: true
+    sortable: true
+    analyzer_name: standard.lucene
+
+  - name: contentVector
+    type: Collection
+    item_type: Single
+    vector:
+      dimensions: 1536           # your embedding dim
+      profile_name: hnsw-profile
+    searchable: true
+    filterable: false
+    retrievable: false
+
+  - name: questionoranswer
+    type: String
+    searchable: true
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  - name: speaker
+    type: String
+    searchable: true
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  - name: video_url
+    type: String
+    searchable: true
+    filterable: true
+    retrievable: true
+
+  - name: keyword
+    type: String
+    searchable: true
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  - name: topic
+    type: String
+    searchable: true
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  - name: filename
+    type: String
+    searchable: true
+    filterable: true
+    retrievable: true
+    sortable: true
+
+vector_search:
+  algorithms:
+    - name: hnsw-config
+  profiles:
+    - name: hnsw-profile
+      algorithm_configuration_name: hnsw-config
+      vectorizer_name: azure-oai
+  vectorizers:
+    - vectorizer_name: azure-oai
+      kind: azureOpenAI
+      parameters:
+        resource_url: https://<your-openai-endpoint>      # from config.open_ai_endpoint
+        deployment_name: <your-search-deployment-name>     # config.search_deployment_name
+        model_name: <your-embedding-model-name>            # config.search_embedding_model
+        api_key: <your-openai-api-key>                     # config.open_ai_key
+
+semantic_search:
+  configurations:
+    - name: default-semantic
+      prioritized_fields:
+        content_fields:
+          - text
+        title_field: questionoranswer

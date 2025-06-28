@@ -1,0 +1,26 @@
+{% if data.JSONFetcher %}
+=== Full JSON Data ===
+
+{{ data.JSONFetcher | tojson(indent=2) }}
+
+{% endif %}
+
+{% if data.AzureSearchFetcher and data.AzureSearchFetcher.results %}
+=== Azure Search Snippets ===
+
+{% for doc in data.AzureSearchFetcher.results %}
+
+{{ doc.text }}
+{% endfor %}
+
+=== Azure Search Full JSON Data ===
+
+{{ data.AzureSearchFetcher | tojson(indent=2) }}
+
+{% else %}
+No search results available.
+{% endif %}
+
+Question: {{ question }}
+
+Answer concisely:
