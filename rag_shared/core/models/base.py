@@ -2,6 +2,9 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 
 class LLMModel(ABC):
+    def __init__(self):
+        self.defaults = {}
+
     @abstractmethod
     async def generate(
         self,

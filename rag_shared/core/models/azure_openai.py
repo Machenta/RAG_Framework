@@ -54,7 +54,6 @@ class AzureOpenAIModel(LLMModel):
             "presence_penalty":  default_presence_penalty
         }
 
-        print("API Key:", self.config.app.llm.api_key)
         
 
     async def generate(
