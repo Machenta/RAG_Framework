@@ -1,6 +1,7 @@
 import os
 import yaml
 import logging
+import copy
 from dataclasses import dataclass, asdict
 from typing import Optional, Dict,Any, Type
 from typing import TypeVar, Type, cast
@@ -22,12 +23,16 @@ def set_nested_attr(obj, attr_path, value):
     If the first attribute is not 'app', automatically start from obj.app.
     Supports both list and dataclass/namespace attribute traversal.
     """
-    # If the first attribute is not 'app', assume the root is obj.app
-    if hasattr(obj, "app") and attr_path and attr_path[0] != "app":
+    # If path starts with 'app', navigate to it
+    if attr_path and attr_path[0] == 'app':
+        if hasattr(obj, 'app'):
+            obj = obj.app
+        attr_path = attr_path[1:]  # Skip 'app'
+    
+    # If path doesn't start with 'app' but obj has 'app', start from app
+    elif hasattr(obj, "app") and attr_path:
         obj = obj.app
-    # If the first attribute is 'app', skip it
-    if attr_path and attr_path[0] == "app":
-        attr_path = attr_path[1:]
+    
     for attr in attr_path[:-1]:
         # Support both dict and attribute access
         if isinstance(obj, dict):
@@ -36,11 +41,13 @@ def set_nested_attr(obj, attr_path, value):
             obj = getattr(obj, attr, None)
         if obj is None:
             return  # Can't set deeper
+    
     # Set the value
     if isinstance(obj, dict):
         obj[attr_path[-1]] = value
     else:
         setattr(obj, attr_path[-1], value)
+
 
 def remove_sensitive_keys(data: Any, sensitive_keys: set) -> Any:
     """Recursively remove sensitive keys from a dict or list."""
@@ -93,14 +100,14 @@ class Config(metaclass=SingletonMeta):
         self.key_vault_name = key_vault_name
         self.config_folder  = config_folder
         self.config_filename= config_filename
+        self._config_path = os.path.join(self.config_folder, self.config_filename)
 
         # --- load YAML config from filesystem ---
-        config_path = os.path.join(self.config_folder, self.config_filename)
-        if not os.path.exists(config_path):
+        if not os.path.exists(self._config_path):
             raise FileNotFoundError(
-                f"Configuration file not found: '{config_path}'"
+                f"Configuration file not found: '{self._config_path}'"
             )
-        with open(config_path, 'r', encoding='utf-8') as f:
+        with open(self._config_path, 'r', encoding='utf-8') as f:
             raw = yaml.safe_load(f) or {}
         
         self.secrets_mapping = raw.get("secrets_mapping", {})
@@ -141,6 +148,9 @@ class Config(metaclass=SingletonMeta):
 
         # ── 4) inject secrets from Key Vault into AppConfig ─────────────
         self._inject_secrets()
+        
+        # Store the original raw config for comparison when saving
+        self._original_raw = raw
 
 
     def _get_secret(self, name: str) -> str:
@@ -180,25 +190,47 @@ class Config(metaclass=SingletonMeta):
             if secret_value is not None:
                 set_nested_attr(self, list(attr_path), secret_value)
 
-    # --- Key Vault backed properties ---
-    # @cached_property
-    # def kv(self) -> KVSecrets:
-    #     # map of secret property names to vault keys
-    #     mapping = {
-    #         'endpoint': 'AzureSearchEndpoint',
-    #         'api_key': 'AzureSearchAPIKey',
-    #         'search_embedding_url': 'AzureSearchEmbeddingURL',
-    #         'search_embedding_api_key': 'AzureSearchEmbeddingAPIKey',
-    #         'endpoint': 'OpenAIEndpoint',
-    #         'api_key': 'OpenAIModelAPIKey',
-    #     }
-    #     secrets = {}
-    #     for prop, secret_name in mapping.items():
-    #         try:
-    #             secrets[prop] = self._get_secret(secret_name)
-    #         except Exception:
-    #             secrets[prop] = ""
-    #     return KVSecrets(**secrets)
+    def save(self) -> bool:
+        """
+        Save the current configuration back to the YAML file.
+        This only saves non-secret values (secrets are managed in Key Vault).
+        
+        Returns:
+            bool: True if the save was successful, False otherwise
+        """
+        try:
+            # Create a backup of the original config file
+            backup_path = f"{self._config_path}.bak"
+            if os.path.exists(self._config_path):
+                try:
+                    import shutil
+                    shutil.copy2(self._config_path, backup_path)
+                    logging.info(f"Created backup of config file: {backup_path}")
+                except Exception as e:
+                    logging.warning(f"Failed to create backup of config file: {e}")
+            
+            # Convert the app dataclass to a dict with deep copy for nested structures
+            app_dict = copy.deepcopy(asdict(self.app))
+            
+            # Create the structure of the config file
+            config_data = {"app": app_dict}
+            
+            # Write the updated config back to the file
+            with open(self._config_path, 'w', encoding='utf-8') as f:
+                yaml.safe_dump(config_data, f, sort_keys=False, default_flow_style=False)
+            
+            # Validate persistence by reloading the file and checking a sample key
+            with open(self._config_path, 'r', encoding='utf-8') as f:
+                saved = yaml.safe_load(f)
+            # Example validation (customize to a key you update often)
+            if 'llm' in saved.get('app', {}) and 'params' in saved['app']['llm'] and saved['app']['llm']['params'].get('max_tokens') != self.app.llm.params.max_tokens: #type: ignore
+                raise ValueError("Save validation failed: Changes not persisted to file")
+            
+            logging.info(f"Configuration saved to {self._config_path}")
+            return True
+        except Exception as e:
+            logging.error(f"Failed to save configuration: {e}")
+            return False
 
     def to_dict(self) -> Dict[str, Any]:
         data: Dict[str, Any] = {'app': asdict(self.app)}
@@ -206,11 +238,62 @@ class Config(metaclass=SingletonMeta):
         sensitive_keys = {"api_key", "key", "endpoint"}
         data = mask_sensitive_keys(data, sensitive_keys)
         return data
+    
+
+    def reload(self) -> bool:
+        """
+        Reload the configuration from disk and reinject secrets.
+        Use this after making changes to the configuration file.
+        
+        Returns:
+            bool: True if the reload was successful, False otherwise
+        """
+        try:
+            logging.info(f"Reloading configuration from {self._config_path}")
+            
+            # Check if the config file exists
+            if not os.path.exists(self._config_path):
+                logging.error(f"Configuration file not found: '{self._config_path}'")
+                return False
+                
+            # Load the YAML configuration
+            with open(self._config_path, 'r', encoding='utf-8') as f:
+                raw = yaml.safe_load(f) or {}
+            
+            # Preserve current non-secret state for merging (optional: prevents loss of unsaved changes)
+            current_app_dict = asdict(self.app)
+            
+            # Update the secrets mapping and map to AppConfig
+            self.secrets_mapping = raw.get("secrets_mapping", {})
+            self.app = from_dict(AppConfig, raw.get("app", {}))
+            
+            # Merge any in-memory non-secret changes back (optional; customize as needed)
+            # Example: Preserve updated max_tokens if not in file
+            if current_app_dict.get('llm', {}).get('params', {}).get('max_tokens') != self.app.llm.params.max_tokens: #type: ignore
+                self.app.llm.params.max_tokens = current_app_dict['llm']['params']['max_tokens'] #type: ignore
+            
+            # Get the secrets mapping from the app config
+            if not hasattr(self.app, "secrets_mapping"):
+                logging.warning("AppConfig missing 'secrets_mapping' attribute")
+                self.app.secrets_mapping = {}  # type: ignore
+            else:
+                self.secrets_mapping = self.app.secrets_mapping
+            
+            # Reinject secrets after loading non-secrets to avoid overwrites
+            self._inject_secrets()
+            
+            # Update the original raw config for future comparisons
+            self._original_raw = raw
+            
+            logging.info("Configuration reloaded successfully")
+            return True
+        except Exception as e:
+            logging.error(f"Failed to reload configuration: {e}")
+            return False
+
 
     def __repr__(self) -> str:
         return yaml.safe_dump(self.to_dict(), sort_keys=False)
-
-
 
 
 if __name__ == "__main__":

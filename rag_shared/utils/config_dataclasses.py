@@ -58,16 +58,16 @@ class PromptConfig:
 # ───────────────────────────────────────────────
 @dataclass
 class GenerationParams:
-    max_tokens:           Optional[int]            = None
-    temperature:          Optional[float]          = None
-    top_p:                Optional[float]          = None
-    frequency_penalty:    Optional[float]          = None
-    presence_penalty:     Optional[float]          = None
-    stop:                 Optional[List[str]]      = None
-    repetition_penalty:   Optional[float]          = None
-    n:                    Optional[int]            = None
-    stream:               Optional[bool]           = None
-    logit_bias:           Optional[Dict[str, int]] = None
+    max_tokens:          Optional[int] = None
+    temperature:         Optional[float] = None
+    top_p:               Optional[float] = None
+    frequency_penalty:   Optional[float] = None
+    presence_penalty:    Optional[float] = None
+    stop:                Optional[List[str]] = field(default_factory=list)  # Fixed: use factory for mutable list
+    repetition_penalty:  Optional[float] = None
+    n:                   Optional[int] = None
+    stream:              Optional[bool] = None
+    logit_bias:          Optional[Dict[str, int]] = field(default_factory=dict)  # Fixed: use factory for mutable dict
 
 
 @dataclass
