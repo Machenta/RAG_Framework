@@ -96,10 +96,19 @@ app:
         api_version:  "2023-05-15"
         api_key: ""       # <- also filled from Key Vault
 
+
+    form_recognizer:
+      endpoint:      "https://pdf-analyser.cognitiveservices.azure.com/"
+      api_version:   "2023-02-28-preview"
+      model_id:      "prebuilt-document"
+      pages_per_call: 100
+      api_key:       ""   # will be filled from Key Vault
+
   secrets_mapping:
     AzureSearchAPIKey:      ["ai_search", "api_key"]
     AzureSearchEmbeddingAPIKey: ["ai_search", "index", "embedding", "api_key"]
     OpenAIAPIKey:           ["llm", "api_key"]
+    FormRecognizerAPIKey:         ['form_recognizer','api_key']
 
   other:
     debug: true

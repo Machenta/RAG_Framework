@@ -119,7 +119,6 @@ class Config(metaclass=SingletonMeta):
         if not hasattr(self.app, "secrets_mapping"):
             raise ValueError("AppConfig must have a 'secrets_mapping' attribute")
 
-        print("Secrets Mapping", self.app.secrets_mapping)
 
         self.secrets_mapping = self.app.secrets_mapping
 
@@ -303,7 +302,7 @@ if __name__ == "__main__":
     cfg = Config(
         key_vault_name="RecoveredSpacesKV",
         config_folder="resources/configs",
-        config_filename="recovered_config.yml"
+        config_filename="handbook_config.yml"
     )
 
     # 2) Pull everything into a dict
@@ -321,6 +320,13 @@ if __name__ == "__main__":
     # # ————————————————————————————————————————————————
     # # Verify singleton behavior
     # # ————————————————————————————————————————————————
-    config2 = Config(key_vault_name="RecoveredSpacesKV", config_filename="recovered_config.yml", config_folder="resources/configs")
+    config2 = Config(key_vault_name="RecoveredSpacesKV", config_filename="handbook_config.yml", config_folder="resources/configs")
     assert cfg is config2, "Config should be a singleton!"
     print("Singleton verified: config is the same instance on second call.")
+
+    # Print only the form recognizer config
+    if cfg.app.form_recognizer:
+        print("=== Form Recognizer Config ===")
+        pprint.pprint(asdict(cfg.app.form_recognizer))
+    else:
+        print("No Form Recognizer config found.")

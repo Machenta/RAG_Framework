@@ -12,57 +12,97 @@ app:
     AzureSearchFetcher:
       processor: noop
       params:
-        # required
-        query: ""                       # e.g. will be filled from your orchestrator build_args
-        filter: ""                      # e.g. "speaker eq 'David'"
-        # optional with defaults
+        query: ""                       
+        filter: ""                      
         top_k: 5
         skip: 0
         include_total_count: true
         facets:
-          - "speaker,count:5"
-          - "topic"
+          - "type,count:5"             # show top types (paragraph, table, vector‑drawing)
         highlight_fields:
           - "text"
-        search_fields: null             # or omit entirely if you want server defaults
+        search_fields:
+          - "text"                      # only search on our text field
         select_fields:
           - "id"
-          - "filename"
-          - "block_id"
+          - "page_number"
           - "chunk_index"
-          - "part"
-          - "speaker"
-          - "timestamp"
-          - "tokens"
-          - "video_url"
-          - "keyword"
-          - "topic"
+          - "type"
           - "text"
-        semantic: false
-        semantic_config: null
+          - "image_path"
+          - "source_pdf"
+          - "width"
+          - "height"
+          - "area"
+        semantic: true                 # use semantic ranking
+        semantic_config: "default-semantic"
         vector_search: true
-        hybrid: null
         vector_field: "contentVector"
 
   llm:
     type: azure_openai
-    processor: default
-    params:
-      prompt_folder: "recovered_space"
-      system_prompt: "system_prompt.j2"
-      prompt: "chat_prompt.j2"
-      default_max_tokens: 200
-      default_temperature: 0.2
+    processor: default              # optional
+    deployment: gpt-4.1-mini
+    model_name: gpt-4.1-mini
+    endpoint: https://embeddingmodelrecoveredspaces.openai.azure.com/
+    api_type: Azure
+    api_version: 2024-12-01-preview
+    api_base_url: https://nunot-masez9tz-eastus2.cognitiveservices.azure.com/
 
-  index:
-    name: "test_transcript"
-    skillset_name: "chat-skillset"
-    indexer_name: "chat-indexer"
-    indexes_path: "AI_search_indexes"
-    index_yml_path: "transcripts.yml"
-    vector_dim: 1536
-    vector_field: "contentVector"
-    index_text_field: "text"
+    prompts:
+      folder:   recovered_space
+      system:   system_prompt.j2
+      defaults:
+        - chat_prompt.j2             # you can list more files here
+        # - another_prompt.j2
+
+    params:
+      max_tokens:              200
+      temperature:             0.2
+      top_p:                   0.9
+      frequency_penalty:       0.0
+      presence_penalty:        0.0
+      stop:                    ["<|im_end|>"]
+      repetition_penalty:      1.0
+      n:                        1
+      stream:                  false
+      logit_bias:              null
+
+
+  ai_search:
+    endpoint: "https://ragtests.search.windows.net"
+    api_key: ""           # <- pulled from Key Vault at runtime
+
+    index:
+      name:            "pdf_index"
+      skillset_name:   "chat-skillset"
+      indexer_name:    "chat-indexer"
+      indexes_path:    "pdf"
+      index_yml_path:  "pdf_index.yml"
+
+      vector_dim:       1536
+      vector_field:     "contentVector"
+      index_text_field: "text"
+
+      embedding:
+        url:          "https://nunot-masez9tz-eastus2.cognitiveservices.azure.com/openai/deployments/text-embedding-ada-002/embeddings?api-version=2023-05-15"
+        deployment:   "text-embedding-ada-002"
+        model_name:   "text-embedding-ada-002"
+        api_version:  "2023-05-15"
+        api_key: ""       # <- also filled from Key Vault
+
+  form_recognizer:
+    endpoint:      "https://pdf-analyser.cognitiveservices.azure.com/"
+    api_version:   "2023-02-28-preview"
+    model_id:      "prebuilt-document"
+    pages_per_call: 100
+    api_key:       ""   # will be filled from Key Vault
+
+  secrets_mapping:
+    AzureSearchAPIKey:      ["ai_search", "api_key"]
+    AzureSearchEmbeddingAPIKey: ["ai_search", "index", "embedding", "api_key"]
+    OpenAIAPIKey:           ["llm", "api_key"]
+    FormRecognizerAPIKey:         ['form_recognizer','api_key']
 
   other:
     debug: true

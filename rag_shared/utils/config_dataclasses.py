@@ -119,7 +119,13 @@ class AiSearchConfig:
     endpoint: str
     api_key: str = field(default="", repr=False)          # secret
      
-
+@dataclass
+class FormRecognizerConfig:
+    endpoint:     str
+    api_version:  Optional[str] = None
+    model_id:     str            = "prebuilt-document"
+    pages_per_call: Optional[int] = 2
+    api_key:      str            = field(default="", repr=False)   # secret
 
 @dataclass
 class OtherConfig:
@@ -132,9 +138,10 @@ class OtherConfig:
 @dataclass
 class SecretsMapping:
     # Map of secret names to their attribute paths
-    AzureSearchAPIKey: List[str]
+    AzureSearchAPIKey:          List[str]
     AzureSearchEmbeddingAPIKey: List[str]
-    OpenAIAPIKey: List[str]
+    OpenAIAPIKey:               List[str]
+    FormRecognizerAPIKey:       List[str]
 
 @dataclass
 class KVSecrets:
@@ -157,5 +164,6 @@ class AppConfig:
     fetchers: Optional[FetchersConfig] = None
     llm: Optional[LLMConfig] = None
     ai_search: Optional[AiSearchConfig] = None
+    form_recognizer: Optional[FormRecognizerConfig] = None
     secrets_mapping: Optional[SecretsMapping] = None
     other: Optional[OtherConfig] = None
