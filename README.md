@@ -1,231 +1,473 @@
-# RAG_Framework
+# RAG_Framework (Rag Framework)
 
 ## Overview
 
-RAG_Framework is a modular, production-ready Retrieval-Augmented Generation (RAG) framework designed for enterprise use. It integrates with Azure services (OpenAI, Azure Search, Key Vault, SQL, Blob Storage, etc.), supports multi-source data fetching, and provides robust configuration and secret management. The framework is built for extensibility, testability, and secure deployment across multiple environments.
+- **RAG_Framework** is a modular, production-ready Retrieval-Augmented Generation (RAG) framework designed for enterprise use.  
+- Integrates with Azure services (OpenAI, Cognitive Search, Key Vault, SQL, Blob Storage, etc.), supports multi-source data fetching, and provides robust configuration and secret management.  
+- Python-based, agnostic, configurable, and secure—simplifies building AI-powered applications by combining user input with contextual data from multiple sources and orchestrating LLM calls with rich prompt templates.  
+- Built for extensibility, testability, and secure deployment across multiple environments, supporting single-turn and multi-turn chat, context injection, and prompt engineering.
+
+---
+
+## Table of Contents
+
+1. [Features](#features)  
+2. [Key Components](#key-components)  
+3. [Architecture Overview](#architecture-overview)  
+4. [Tech Stack](#tech-stack)  
+5. [Directory Structure](#directory-structure)  
+6. [Prerequisites](#prerequisites)  
+7. [Setup & Installation](#setup--installation)  
+8. [Configuration](#configuration)  
+9. [Usage Examples](#usage-examples)  
+10. [API Reference](#api-reference)  
+11. [Running Tests](#running-tests)  
+12. [Extending the Framework](#extending-the-framework)  
+13. [Azure Best Practices](#azure-best-practices)  
+14. [Deployment](#deployment)  
+15. [Troubleshooting](#troubleshooting)  
+16. [Contributing](#contributing)  
+17. [License](#license)  
 
 ---
 
 ## Features
 
-- **Retrieval-Augmented Generation (RAG) Orchestration**: Multi-turn chat, context injection, and prompt engineering.
-- **Azure Native Integrations**: Azure OpenAI, Azure Search, Azure Key Vault, Azure SQL, Azure Blob Storage, and more.
-- **Pluggable Data Fetchers**: Easily add new data sources (REST API, Postgres, SQL Server, etc.).
-- **Configurable Prompt Builders**: Template, chat, and composite prompt builders for flexible LLM input.
-- **Secure Secret Management**: Pulls secrets from Azure Key Vault and environment variables.
-- **Singleton Config**: Ensures consistent configuration and secret injection across the app.
-- **Extensive Test Suite**: Connection tests for all Azure services and LLM modules.
-- **Async/Await Support**: All fetchers and orchestrators are async for high performance.
-
----
-
-## Directory Structure
-
-```
-rag_shared/
-    core/
-        deployment/
-        fetchers/
-            azure_search/
-            rest_api/
-        models/
-        orchestrators/
-        prompt_builders/
-    utils/
-resources/
-    AI_search_indexes/
-    configs/
-    prompts/
-tests/
-    test_azure_connections.py
-    test_config.py
-pyproject.toml
-requirements.txt
-README.md
-```
+- **RAG Orchestration**: Single-turn and multi-turn chat with persistent history, context injection, and prompt engineering.  
+- **Agnostic LLM Abstraction**: Plug in Azure OpenAI, OpenAI, or custom LLM providers via a uniform interface.  
+- **Azure Native Integrations**: Azure OpenAI, Cognitive Search, Key Vault, SQL, Blob Storage, and more.  
+- **Modular Fetchers**: Async fetchers for REST APIs, Azure Search, Postgres, SQL Server, file systems, etc.  
+- **Configurable Prompt Builders**: Chat-style, composite, and Jinja2-based template builders.  
+- **Centralized YAML Configuration**: Single file with environment-specific overrides and secret mappings.  
+- **Secure Secret Management**: Lazy-loading from Azure Key Vault or environment variables; managed identity support.  
+- **Singleton Config**: Ensures consistent configuration across the app.  
+- **FastAPI Endpoints**: Production-ready routes for `/v1/rag` and `/v1/chat`.  
+- **Async/Await Support**: High-performance, non-blocking operations throughout.  
 
 ---
 
 ## Key Components
 
 ### 1. Configuration & Secrets
-- `rag_shared/utils/config.py`: Loads YAML config, injects secrets from Azure Key Vault, supports singleton pattern.
-- `rag_shared/utils/config_dataclasses.py`: Dataclasses for all config sections (fetchers, LLM, search, etc.).
+- `rag_shared/utils/config.py` or `config_loader.py`: Loads YAML, injects Key Vault secrets, supports singleton.  
+- `config_dataclasses.py` / Pydantic models: Typed definitions for fetchers, LLM, search, prompts, etc.
 
 ### 2. Data Fetchers
-- `azure_search/azure_search.py`: Async fetcher for Azure Cognitive Search.
-- `rest_api/rest_api.py`: Async fetcher for REST APIs.
-- `postgres.py`, `sql_server.py`: Async fetchers for Postgres and Azure SQL (with managed identity support).
-- `blob_storage.py`: (Stub) for Azure Blob Storage integration.
+- Azure Cognitive Search: `azure_search/azure_search.py` or `azure_ai_search_fetcher.py`  
+- REST API: `rest_api/rest_api.py` (async `httpx`)  
+- Postgres & SQL Server: `postgres.py`, `sql_server.py` (managed identity)  
+- Blob Storage / File System: `blob_storage.py` (stub)  
+- Processors: Registered post-fetch transformations (flattening, filtering).
 
-### 3. LLM Models
-- `models/azure_openai.py`: Azure OpenAI integration, supports chat and completion APIs.
-- `models/base.py`: Abstract LLMModel interface.
+### 3. Prompt Builders
+- `prompt_builders/base.py`: Abstract interface.  
+- ChatPromptBuilder (`chat_prompt.py`): Builds `role`/`content` message lists.  
+- CompositePromptBuilder (`composite.py`): Merges prompts.  
+- TemplatePromptBuilder (`template.py`): Renders Jinja2 templates.
 
-### 4. Orchestrators
-- `orchestrators/rag_orchestrator.py`: Core RAG orchestration logic (fetch, prompt, LLM, metadata, history).
-- `orchestrators/chat_orchestrator.py`: Multi-turn chat with persistent history and system prompt.
+### 4. LLM Models
+- `models/base.py`: `LLMModel` interface.  
+- Azure OpenAI (`azure_openai.py` / `azure_openai_model.py`): Wraps SDK for chat/completion.  
+- (Optional) OpenAI provider integration.
 
-### 5. Prompt Builders
-- `prompt_builders/base.py`: Abstract interface for prompt builders.
-- `prompt_builders/chat_prompt.py`: Chat-style prompt builder.
-- `prompt_builders/composite.py`: Composite builder for multi-source prompts.
+### 5. Orchestrators
+- RagOrchestrator (`rag_orchestrator.py` / `rack_orchestrator.py`): Coordinates fetch → process → build → LLM → assemble.  
+- ChatOrchestrator (`chat_orchestrator.py`): Manages multi-turn chat, history, and system prompts.
 
-### 6. Testing
-- `tests/test_azure_connections.py`: Tests all Azure service connections and LLM module logic.
-- `tests/test_config.py`: Tests config loading, secret injection, and singleton behavior.
+### 6. API (FastAPI)
+- `api/routes.py`: Exposes `/v1/rag` and `/v1/chat`, handles request/response.
+
+### 7. Utilities
+- Logging, timing, helpers in `utils/`.
+
+### 8. Testing
+- `tests/test_azure_connections.py`: Azure SDK connection tests.  
+- `tests/test_config.py`: YAML loading, secret injection, singleton.  
+- Additional tests for fetchers, prompt builders, orchestrators.
 
 ---
 
-<!-- Detailed Module Descriptions and Interaction Flow -->
-## Module Descriptions & Interaction Flow
+## Architecture Overview
 
-### Configuration & Secrets Module
-- **File:** `rag_shared/utils/config.py`, `config_dataclasses.py`
-- **Responsibility:** Load YAML configuration and environment variables, inject secrets from Azure Key Vault using managed identity or environment fallbacks, and provide a singleton `Config` instance.
-- **Flow:** On startup, `Config` reads `resources/configs/*.yml`, maps into `AppConfig`, initializes logging, and lazily resolves secrets upon first access.
-
-### Data Fetchers Module
-- **Files:**
-  - `azure_search/azure_search.py`
-  - `rest_api/rest_api.py`
-  - `sql_server.py`, `postgres.py`
-  - `blob_storage.py` (stub)
-- **Responsibility:** Implement `DataFetcher.fetch(**kwargs)` to asynchronously retrieve data from external sources.
-- **Processors:** Registered via `register_processor()`, allowing post-fetch transformations (e.g. flattening, filtering).
-- **Flow:** `RagOrchestrator` calls each fetcher concurrently, gathers raw data, applies the configured processor, and stores results under their fetcher key.
-
-### Prompt Builders Module
-- **Files:**
-  - `prompt_builders/base.py`
-  - `chat_prompt.py`, `composite.py`, `template.py`
-- **Responsibility:** Transform fetched data into LLM-ready input: either a single prompt string or a list of chat message dicts (`role`, `content`).
-- **Types:**
-  1. **ChatPromptBuilder:** Builds a chat-style message list, injecting a system prompt and user content snippets.
-  2. **CompositePromptBuilder:** Merges multiple builders, concatenating strings or merging message lists.
-  3. **TemplatePromptBuilder:** (Not shown) Uses Jinja2 templates to render dynamic prompts.
-
-### LLM Models Module
-- **Files:**
-  - `models/base.py` (abstract interface)
-  - `azure_openai.py`
-- **Responsibility:** Wrap Azure OpenAI SDK for completion and chat APIs, merge default parameters with overrides, and provide uniform `generate()` interface.
-- **Flow:** Receives prompt/messages, asynchronously sends request to Azure OpenAI, and returns the trimmed response text.
-
-### Orchestrators Module
-- **Files:**
-  - `orchestrators/rag_orchestrator.py`
-  - `chat_orchestrator.py`
-- **Responsibility:** Coordinate end-to-end RAG pipeline:
-  1. **Fetch Phase:** Concurrently call each `DataFetcher`.
-  2. **Process Phase:** Apply processors to raw data.
-  3. **Build Phase:** Use a `PromptBuilder` to generate LLM input.
-  4. **LLM Phase:** Call `LLMModel.generate()`.
-  5. **Metadata & History:** Extract source metadata (e.g. document URLs, timestamps), update chat history.
-- **ChatOrchestrator Extension:** Manages multi-turn chat by preserving and prepending history and system prompt on each call.
-
-### Component Interaction Diagram
 ```text
-User Question → RagOrchestrator → [fetchers]
-                 ↳ AzureSearchFetcher → Azure Search Service → raw results
-                 ↳ SQLServerFetcher → Azure SQL → rows
-                 ↳ RestAPIFetcher → HTTP API → JSON
-                 ↳ PostgresFetcher → Postgres DB → rows
-              fetched data → processors → aggregated dict
-              dict + user_question → PromptBuilder → prompt/messages
-              prompt/messages → AzureOpenAIModel → LLM Response
-              Response + metadata + history → returned to caller
+User 
+ └─> API (/v1/rag, /v1/chat)
+       └─> Orchestrator
+             ├─> Fetchers (Search, REST, SQL, Postgres, Blob)
+             │      ↳ External services → raw data
+             ├─> Processors → transform data
+             ├─> PromptBuilder → prompt/messages
+             └─> LLMModel → AzureOpenAI/OpenAI → response
+       └─> Response (answer, context, metadata, history)
 ```
+
+On startup, `ConfigLoader` reads `resources/configs/*.yml`, resolves secrets from Key Vault or env vars, and provides a typed config. The orchestrator then concurrently fetches data, applies processors, builds prompts, calls the LLM, and returns results with metadata.
+
+---
+
+## Tech Stack
+
+- Python 3.10+  
+- `asyncio`, `httpx` for async I/O  
+- PyYAML for config  
+- Pydantic or dataclasses for schemas  
+- Azure SDKs (`azure-identity`, `azure-keyvault-secrets`, `azure-search-documents`)  
+- Jinja2 for prompt templates  
+- FastAPI + Uvicorn for web service  
+- pytest + pytest-asyncio for testing  
+
+---
+
+## Directory Structure
+
+```
+└── 📁RAG_Framework
+    └── 📁rag_shared
+        └── 📁core
+            └── 📁deployment
+                ├── rest_api_processors.py
+            └── 📁fetchers
+                └── 📁azure_search
+                    ├── azure_search.py
+                    ├── noop.py
+                └── 📁rest_api
+                    ├── api_process_a.py
+                    ├── api_process_b.py
+                    ├── rest_api.py
+                ├── __init__.py
+                ├── base.py
+                ├── blob_storage.py
+                ├── postgres.py
+                ├── registry.py
+                ├── sql_server.py
+            └── 📁models
+                ├── azure_openai.py
+                ├── base.py
+            └── 📁orchestrators
+                ├── chat_orchestrator.py
+                ├── rag_orchestrator.py
+            └── 📁prompt_builders
+                ├── base.py
+                ├── chat_prompt.py
+                ├── composite.py
+                ├── json_prompt.py
+                ├── template.py
+        └── 📁utils
+            ├── __init__.py
+            ├── config_dataclasses.py
+            ├── config.py
+            ├── index_manager.py
+            ├── retrieval.py
+        ├── __init__.py
+    └── 📁resources
+        └── 📁AI_search_indexes
+            ├── transcripts.yml
+        └── 📁configs
+            ├── handbook_config.yml
+            ├── recovered_config.yml
+        └── 📁prompts
+            └── 📁recovered_space
+                ├── chat_prompt.j2
+                ├── default_prompt.j2
+                ├── system_prompt.j2
+            ├── default_prompt_with_json.j2
+            ├── default_prompt.j2
+            ├── system_prompt.j2
+        ├── __init__.py
+    └── 📁tests
+        ├── test_azure_connections.py
+        ├── test_config.py
+    ├── .gitignore
+    ├── pyproject.toml
+    ├── README.md
+    └── requirements.txt
+```
+
+---
+
+## Prerequisites
+
+- Python 3.10+  
+- `pip` or Poetry  
+- Azure subscription with:  
+   • Cognitive Search service  
+   • Azure OpenAI resource  
+   • Key Vault instance  
+   • (Optional) Azure SQL  
+- Local Azure credentials (`az login` or service principal)  
+- Environment variables or YAML entries:  
+   - `RACK_CONFIG_FILE` or `CONFIG_PATH` (default: `resources/configs/config.yaml`)  
+   - `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`  
+   - `KEY_VAULT_URL`  
 
 ---
 
 ## Setup & Installation
 
-1. **Clone the repository**
-   ```pwsh
+1. Clone the repo  
+   ```bash
    git clone <your-repo-url>
    cd RAG_Framework
    ```
 
-2. **Install dependencies**
-   ```pwsh
+2. Create & activate a virtual environment  
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate      # Linux/macOS
+   venv\Scripts\activate         # Windows PowerShell
+   ```
+
+3. Install dependencies  
+   ```bash
    pip install -r requirements.txt
    ```
 
-3. **Configure Azure Key Vault and YAML config**
-   - Place your config YAMLs in `resources/configs/` (see example configs).
-   - Set up your Azure Key Vault and ensure your secrets match the mapping in your config.
+4. Configure Key Vault and YAML  
+   - Place YAML files in `resources/configs/` (e.g., `config.yaml`, `dev_config.yaml`).  
+   - Map secret names in YAML to Key Vault entries or env vars.
 
-4. **Set environment variables as needed**
-   - For local dev, you can use a `.env` file or set variables in your shell.
+---
+
+## Configuration
+
+All settings live in a YAML file (`resources/configs/config.yaml` by default). Override with `RAG_CONFIG_FILE`.
+
+### Sample `config.yaml`
+
+```yaml
+azure_openai:
+  endpoint: "https://<your-openai-endpoint>.openai.azure.com/"
+  api_key: "<YOUR_OPENAI_API_KEY>"
+  deployment_name: "gpt-4"
+  embedding_deployment_name: "text-embedding-ada-002"
+  embedding_model: "text-embedding-ada-002"
+
+azure_ai_search:
+  endpoint: "https://<your-search-service>.search.windows.net"
+  api_key: "<YOUR_SEARCH_API_KEY>"
+  index_name: "my-index"
+  api_version: "2023-07-01-Preview"
+  semantic_configuration_name: "default"
+  semantic_search_config:
+    search_fields: ["content", "metadata"]
+    semantic_fields: ["content"]
+
+llm_config:
+  provider: "azure"                           
+  model: "gpt-4-32k"
+  endpoint: "https://<your-openai-endpoint>.openai.azure.com/"
+  api_key: "<YOUR_OPENAI_API_KEY>"
+  api_version: "2023-07-01-preview"
+  base_url: "/openai/deployments/"
+
+prompts:
+  fetch:
+    template: "resources/prompts/fetch.j2"
+  summarize:
+    template: "resources/prompts/summarize.j2"
+
+field_mappings:
+  document_id: "id"
+  content: "content"
+  metadata:
+    author: "author"
+    date: "date"
+    tags: ["tag1", "tag2"]
+
+keyvault_secrets:
+  - "SearchServiceApiKey"
+  - "OpenAIApiKey"
+```
+
+---
+
+## Usage Examples
+
+### Load Configuration
+
+```python
+from rag_shared.utils.config import Config
+
+cfg = Config(
+  key_vault_name="RecoveredSpacesKV",
+  config_folder="resources/configs",
+  config_filename="config.yaml"
+)
+print(cfg.azure_ai_search.endpoint)
+```
+
+### Query Azure Cognitive Search
+
+```python
+from rack_framework.connectors.azure_ai_search_fetcher import AzureAISearchFetcher
+
+fetcher = AzureAISearchFetcher(cfg)
+results = await fetcher.fetch(query="machine learning", top_k=5)
+print(results)
+```
+
+### Build Prompt & Call LLM
+
+```python
+from rag_shared.core.prompt_builders.chat_prompt import ChatPromptBuilder
+from rag_shared.core.models.azure_openai import AzureOpenAIModel
+
+builder = ChatPromptBuilder()
+model = AzureOpenAIModel(cfg)
+prompt_msgs = builder.build(user_input="What is RAG?", context_snippets=[])
+response = await model.generate(prompt_msgs)
+print(response)
+```
+
+### Single-Turn Orchestration
+
+```python
+import asyncio
+from rag_shared.core.orchestrators.rag_orchestrator import RagOrchestrator
+from rag_shared.core.fetchers.azure_search.azure_search import AzureSearchFetcher
+
+async def main():
+    orchestrator = RagOrchestrator(
+        fetchers=[AzureSearchFetcher(cfg)],
+        model=AzureOpenAIModel(cfg),
+        prompt_builder=ChatPromptBuilder(),
+        config=cfg
+    )
+    result = await orchestrator.get_response("Define retrieval-augmented generation")
+    print(result)
+asyncio.run(main())
+```
+
+### Multi-Turn Chat
+
+```python
+import asyncio
+from rag_shared.core.orchestrators.chat_orchestrator import ChatOrchestrator
+
+async def chat_session():
+    chat = ChatOrchestrator(
+        fetchers=[AzureSearchFetcher(cfg)],
+        model=AzureOpenAIModel(cfg),
+        prompt_builder=ChatPromptBuilder(),
+        config=cfg,
+        system_prompt="You are a helpful assistant."
+    )
+    print(await chat.send_message("Hello, who are you?"))
+    print(await chat.send_message("Explain RAG in simple terms."))
+asyncio.run(chat_session())
+```
+
+---
+
+## API Reference
+
+All endpoints via FastAPI in `src/rack_framework/api/routes.py`.
+
+### POST /v1/rag
+
+Perform single-turn RAG.
+
+Request:
+```json
+{
+  "query": "Explain quantum computing",
+  "top_k": 5
+}
+```
+
+Response:
+```json
+{
+  "query": "Explain quantum computing",
+  "context": ["...snippets..."],
+  "answer": "..."
+}
+```
+
+### POST /v1/chat
+
+Multi-turn chat.
+
+Request:
+```json
+{
+  "session_id": "abc123",
+  "message": "What is RAG?"
+}
+```
+
+Response:
+```json
+{
+  "session_id": "abc123",
+  "response": "Retrieval-augmented generation (RAG) is …"
+}
+```
 
 ---
 
 ## Running Tests
 
-1. **Install test dependencies**
-   ```pwsh
+1. Install test deps  
+   ```bash
    pip install pytest pytest-asyncio
    ```
-
-2. **Run all tests**
-   ```pwsh
+2. Run all tests  
+   ```bash
    pytest
    ```
-
-3. **Run a specific test file**
-   ```pwsh
+3. Specific tests  
+   ```bash
    pytest tests/test_azure_connections.py
    ```
 
 ---
 
-## Usage Example
-
-See orchestrator `__main__` blocks for end-to-end usage. Example (simplified):
-
-```python
-from rag_shared.utils.config import Config
-from rag_shared.core.fetchers.azure_search.azure_search import AzureSearchFetcher
-from rag_shared.core.models.azure_openai import AzureOpenAIModel
-from rag_shared.core.orchestrators.chat_orchestrator import ChatOrchestrator
-from rag_shared.core.prompt_builders.chat_prompt import ChatPromptBuilder
-
-cfg = Config(key_vault_name="RecoveredSpacesKV", config_folder="resources/configs", config_filename="recovered_config.yml")
-fetcher = AzureSearchFetcher(cfg)
-llm = AzureOpenAIModel(cfg)
-builder = ChatPromptBuilder()
-orchestrator = ChatOrchestrator(
-    fetchers=[fetcher],
-    model=llm,
-    prompt_builder=builder,
-    config=cfg,
-    system_prompt="You are a helpful assistant."
-)
-result = orchestrator("What is RAG?", fetch_args=None, history=None)
-print(result["answer"])
-```
-
----
-
 ## Extending the Framework
 
-- Add new fetchers by subclassing `DataFetcher` and registering processors.
-- Add new prompt builders by subclassing `PromptBuilder`.
-- Add new LLM integrations by subclassing `LLMModel`.
-- Update config dataclasses and YAMLs for new settings.
+- **Fetchers**: Subclass `DataFetcher`, implement `fetch()`, register processors.  
+- **Prompt Builders**: Subclass `PromptBuilder`.  
+- **LLM Models**: Subclass `LLMModel`.  
+- **Config**: Extend dataclasses/Pydantic definitions and update YAML.
 
 ---
 
 ## Azure Best Practices
 
-- All secrets are managed via Azure Key Vault.
-- Use managed identity for SQL and other Azure resources where possible.
-- Async/await is used throughout for scalability.
-- Tests ensure all connections are valid before deployment.
+- Manage all secrets in Azure Key Vault.  
+- Use managed identity for SQL and other Azure resources.  
+- Adopt async/await for scalability.  
+- Validate connections with tests before deployment.
 
 ---
 
-## License
+## Deployment
 
-MIT License. See `LICENSE` file for details.
+### Azure Web App
+
+1. Push code to a GitHub repo.  
+2. Create an Azure Web App for Python.  
+3. Configure App Settings:  
+   - `RAG_CONFIG_FILE`  
+   - `KEY_VAULT_URL`  
+   - `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`  
+4. Enable Managed Identity or assign a Service Principal to access Key Vault.  
+5. Deploy via GitHub Actions or Azure DevOps.
+
+---
+
+## Troubleshooting
+
+- **FileNotFoundError: config.yaml**  
+  • Verify `RAG_CONFIG_FILE` or default path.  
+- **YAML parse errors**  
+  • Validate with `yamllint`.  
+- **Azure credential errors**  
+  • Run `az login` or set `AZURE_*` env vars.  
+  • Check Key Vault access policies.  
+- **HTTP 401/403 from Azure**  
+  • Confirm endpoint URLs and secret names.  
+- **Template rendering errors**  
+  • Ensure Jinja2 variables match your prompt context.
+
+---
