@@ -124,6 +124,61 @@ app:
       use_managed_identity: true  # Recommended for production
       endpoint_suffix: "core.windows.net"  # Use "core.chinacloudapi.cn" for Azure China
       # account_key and connection_string will be injected from Key Vault
+
+    file_mappings:
+      base_container: "conversionfiles"
+      type_mappings:
+        # PDF documents go to pdf/raw directory
+        ".pdf": "pdf/raw"
+        ".PDF": "pdf/raw"
+        
+        # Text files go to transcripts/raw
+        ".txt": "transcripts/raw"
+        ".TXT": "transcripts/raw"
+        
+        # Audio files
+        ".mp3": "audio/raw"
+        ".wav": "audio/raw"
+        ".m4a": "audio/raw"
+        
+        # Video files
+        ".mp4": "video/raw"
+        ".avi": "video/raw"
+        ".mov": "video/raw"
+        
+        # Document formats
+        ".docx": "documents/word"
+        ".doc": "documents/word"
+        ".pptx": "documents/powerpoint"
+        ".ppt": "documents/powerpoint"
+        ".xlsx": "documents/excel"
+        ".xls": "documents/excel"
+        
+        # Images
+        ".jpg": "images/raw"
+        ".jpeg": "images/raw"
+        ".png": "images/raw"
+        ".gif": "images/raw"
+        ".bmp": "images/raw"
+        
+        # Archive files
+        ".zip": "archives/compressed"
+        ".rar": "archives/compressed"
+        ".7z": "archives/compressed"
+        
+        # JSON and XML data
+        ".json": "data/structured"
+        ".xml": "data/structured"
+        ".csv": "data/tabular"
+        
+        # Code files
+        ".py": "code/python"
+        ".js": "code/javascript"
+        ".html": "code/web"
+        ".css": "code/web"
+        
+        # Default fallback for unknown types
+        "default": "misc/other"
     
     # File Share configuration  
     file_share:

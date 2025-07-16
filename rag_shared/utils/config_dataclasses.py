@@ -133,6 +133,87 @@ class FormRecognizerConfig:
     api_key:      str            = field(default="", repr=False)   # secret
 
 @dataclass
+class FileTypeMappingConfig:
+    """Configuration for mapping file types to storage containers and directories."""
+    
+    # Base container name (all files go here)
+    base_container: str = "conversionfiles"
+    
+    # File extension to subdirectory mapping (will be joined with base_container)
+    # Using forward slashes - they'll be normalized for the target platform
+    file_type_mappings: Dict[str, str] = field(default_factory=lambda: {
+        ".pdf": "pdf/raw",
+        ".txt": "transcripts/raw", 
+        ".docx": "docs/raw",
+        ".xlsx": "data/raw",
+        ".csv": "data/raw",
+        ".json": "data/raw",
+        ".pptx": "presentations/raw",
+        ".mp4": "video/raw",
+        ".mp3": "audio/raw",
+        ".wav": "audio/raw",
+        ".png": "images/raw",
+        ".jpg": "images/raw",
+        ".jpeg": "images/raw"
+    })
+    
+    # Default directory for unknown file types
+    default_directory: str = "other/raw"
+    
+    # Whether to use file extension case-insensitive matching
+    case_insensitive: bool = True
+    
+    def get_container_path(self, file_extension: str) -> str:
+        """
+        Get the full container path for a given file extension.
+        
+        Args:
+            file_extension: File extension (e.g., ".pdf", ".txt")
+            
+        Returns:
+            Full path like "conversionfiles/pdf/raw"
+        """
+        if self.case_insensitive:
+            file_extension = file_extension.lower()
+            
+        # Get the subdirectory, or use default
+        subdirectory = self.file_type_mappings.get(file_extension, self.default_directory)
+        
+        # Join with base container using forward slashes (cross-platform safe)
+        return f"{self.base_container}/{subdirectory}"
+    
+    def get_blob_name(self, filename: str, subdirectory: str = "") -> str:
+        """
+        Generate a blob name for a file, including directory structure.
+        
+        Args:
+            filename: Original filename
+            subdirectory: Optional additional subdirectory
+            
+        Returns:
+            Blob name like "pdf/raw/document.pdf" or "pdf/raw/2024/document.pdf"
+        """
+        import os
+        
+        # Extract file extension
+        _, ext = os.path.splitext(filename)
+        
+        # Get the base directory path
+        directory_path = self.file_type_mappings.get(
+            ext.lower() if self.case_insensitive else ext, 
+            self.default_directory
+        )
+        
+        # Add subdirectory if provided
+        if subdirectory:
+            # Normalize subdirectory path separators
+            subdirectory = subdirectory.replace('\\', '/')
+            directory_path = f"{directory_path}/{subdirectory}"
+        
+        # Return the full blob name (always use forward slashes for blob storage)
+        return f"{directory_path}/{filename}"
+
+@dataclass
 class BlobStorageConfig:
     account_name: str
     container_name: str
@@ -140,6 +221,9 @@ class BlobStorageConfig:
     connection_string: Optional[str] = field(default="", repr=False)  # secret alternative
     use_managed_identity: Optional[bool] = True  # prefer managed identity over keys
     endpoint_suffix: Optional[str] = "core.windows.net"  # for sovereign clouds
+    
+    # File type mapping configuration
+    file_mappings: Optional[FileTypeMappingConfig] = field(default_factory=FileTypeMappingConfig)
 
 @dataclass
 class FileShareConfig:

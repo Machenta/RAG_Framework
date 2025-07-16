@@ -1,4 +1,5 @@
 import asyncio
+import os
 from typing import Any, Dict, Optional
 from azure.storage.blob.aio import BlobServiceClient
 from azure.identity.aio import DefaultAzureCredential
@@ -47,40 +48,85 @@ class BlobStorageFetcher(DataFetcher):
         Build arguments for fetch() from context.
         
         Expected context keys:
-        - blob_name: Name of the blob to fetch
+        - blob_name: Name of the blob to fetch, OR
+        - filename: Filename to auto-map to correct container path
         - container_name: Optional override of container name
+        - subdirectory: Optional additional subdirectory within the file type directory
         """
         blob_name = context.get("blob_name")
-        if not blob_name:
+        filename = context.get("filename")
+        
+        if not blob_name and not filename:
             return {}
-            
+        
         return {
             "blob_name": blob_name,
+            "filename": filename,
             "container_name": context.get("container_name"),
+            "subdirectory": context.get("subdirectory", ""),
             "encoding": context.get("encoding", "utf-8")
         }
+    
+    def get_blob_path_for_file(self, filename: str, subdirectory: str = "") -> tuple[str, str]:
+        """
+        Get the container and blob path for a file using file type mappings.
+        
+        Args:
+            filename: Original filename with extension
+            subdirectory: Optional additional subdirectory
+            
+        Returns:
+            Tuple of (container_name, blob_name)
+        """
+        if not self.blob_config.file_mappings:
+            # Fallback to configured container and simple path
+            return self.blob_config.container_name, filename
+            
+        # Get the full container path (includes base container + file type directory)
+        container_path = self.blob_config.file_mappings.get_container_path(
+            os.path.splitext(filename)[1]
+        )
+        
+        # Extract just the base container name (first part)
+        container_name = container_path.split('/')[0]
+        
+        # Get the blob name (directory structure + filename)
+        blob_name = self.blob_config.file_mappings.get_blob_name(filename, subdirectory)
+        
+        return container_name, blob_name
     
     async def fetch(self, **kwargs) -> Dict[str, Any]:
         """
         Fetch blob content from Azure Blob Storage.
         
         Args:
-            blob_name: Name of the blob to fetch
+            blob_name: Direct blob name to fetch, OR
+            filename: Filename to auto-map using file type mappings
             container_name: Optional override of container name
+            subdirectory: Optional additional subdirectory (when using filename)
             encoding: Text encoding (default: utf-8)
         
         Returns:
             Dict containing blob metadata and content
         """
         blob_name = kwargs.get("blob_name")
-        if not blob_name:
-            raise ValueError("blob_name is required")
-            
-        container_name = kwargs.get("container_name") or self.blob_config.container_name
+        filename = kwargs.get("filename")
+        subdirectory = kwargs.get("subdirectory", "")
         encoding = kwargs.get("encoding", "utf-8")
         
+        # Determine container and blob name
+        if blob_name:
+            # Direct blob name provided
+            container_name = kwargs.get("container_name") or self.blob_config.container_name
+            final_blob_name = blob_name
+        elif filename:
+            # Use file mapping to determine paths
+            container_name, final_blob_name = self.get_blob_path_for_file(filename, subdirectory)
+        else:
+            raise ValueError("Either blob_name or filename must be provided")
+        
         client = await self._get_client()
-        blob_client = client.get_blob_client(container=container_name, blob=blob_name)
+        blob_client = client.get_blob_client(container=container_name, blob=final_blob_name)
         
         try:
             # Get blob properties
@@ -101,7 +147,8 @@ class BlobStorageFetcher(DataFetcher):
             return {
                 "source": "blob_storage",
                 "container_name": container_name,
-                "blob_name": blob_name,
+                "blob_name": final_blob_name,
+                "original_filename": filename,  # Track original filename if used
                 "content": content,
                 "content_type": properties.content_settings.content_type,
                 "size": properties.size,
@@ -114,7 +161,8 @@ class BlobStorageFetcher(DataFetcher):
             return {
                 "source": "blob_storage",
                 "container_name": container_name,
-                "blob_name": blob_name,
+                "blob_name": final_blob_name,
+                "original_filename": filename,
                 "error": str(e),
                 "content": None
             }

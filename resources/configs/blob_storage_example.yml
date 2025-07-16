@@ -1,0 +1,86 @@
+# Example configuration demonstrating blob storage with file type mappings
+logging:
+  level: INFO
+
+blob_storage:
+  connection_string: "${BLOB_STORAGE_CONNECTION_STRING}"
+  container_name: "documents"
+  # Alternative authentication using managed identity
+  # account_name: "mystorageaccount"
+  # use_managed_identity: true
+  
+  # File type mapping configuration
+  file_mappings:
+    base_container: "conversionfiles"
+    type_mappings:
+      # PDF documents go to pdf/raw directory
+      ".pdf": "pdf/raw"
+      ".PDF": "pdf/raw"
+      
+      # Text files go to transcripts/raw
+      ".txt": "transcripts/raw"
+      ".TXT": "transcripts/raw"
+      
+      # Audio files
+      ".mp3": "audio/raw"
+      ".wav": "audio/raw"
+      ".m4a": "audio/raw"
+      
+      # Video files
+      ".mp4": "video/raw"
+      ".avi": "video/raw"
+      ".mov": "video/raw"
+      
+      # Document formats
+      ".docx": "documents/word"
+      ".doc": "documents/word"
+      ".pptx": "documents/powerpoint"
+      ".ppt": "documents/powerpoint"
+      ".xlsx": "documents/excel"
+      ".xls": "documents/excel"
+      
+      # Images
+      ".jpg": "images/raw"
+      ".jpeg": "images/raw"
+      ".png": "images/raw"
+      ".gif": "images/raw"
+      ".bmp": "images/raw"
+      
+      # Archive files
+      ".zip": "archives/compressed"
+      ".rar": "archives/compressed"
+      ".7z": "archives/compressed"
+      
+      # JSON and XML data
+      ".json": "data/structured"
+      ".xml": "data/structured"
+      ".csv": "data/tabular"
+      
+      # Code files
+      ".py": "code/python"
+      ".js": "code/javascript"
+      ".html": "code/web"
+      ".css": "code/web"
+      
+      # Default fallback for unknown types
+      "default": "misc/other"
+
+# Usage examples in your application:
+# 
+# 1. Fetch using direct blob name:
+#    result = await blob_fetcher.fetch(blob_name="specific/path/file.pdf")
+#
+# 2. Fetch using filename with automatic mapping:
+#    result = await blob_fetcher.fetch(filename="report.pdf")
+#    # This will look in: conversionfiles/pdf/raw/report.pdf
+#
+# 3. Fetch with additional subdirectory:
+#    result = await blob_fetcher.fetch(filename="report.pdf", subdirectory="2024/Q1")
+#    # This will look in: conversionfiles/pdf/raw/2024/Q1/report.pdf
+#
+# 4. Override container:
+#    result = await blob_fetcher.fetch(
+#        filename="data.csv", 
+#        container_name="analytics"
+#    )
+#    # This will look in: analytics/data/tabular/data.csv

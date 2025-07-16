@@ -106,6 +106,48 @@ async def test_blob_storage_connection(config):
         pytest.fail(f"Blob Storage connection failed: {e}")
 
 @pytest.mark.asyncio
+async def test_blob_storage_file_mapping(config):
+    """Test blob storage file type mapping functionality"""
+    from rag_shared.core.fetchers.blob_storage import BlobStorageFetcher
+    from rag_shared.utils.config_dataclasses import FileTypeMappingConfig
+    from unittest.mock import MagicMock
+    
+    # Create a mock config with file mappings
+    mock_config = MagicMock()
+    mock_config.app.storage.blob_storage.container_name = "test-container"
+    mock_config.app.storage.blob_storage.connection_string = "test-connection"
+    mock_config.app.storage.blob_storage.file_mappings = FileTypeMappingConfig(
+        base_container="conversionfiles",
+        file_type_mappings={
+            ".pdf": "pdf/raw",
+            ".txt": "transcripts/raw"
+        },
+        default_directory="misc/other"
+    )
+    
+    fetcher = BlobStorageFetcher(mock_config)
+    
+    # Test PDF file mapping
+    container, blob_name = fetcher.get_blob_path_for_file("document.pdf")
+    assert container == "conversionfiles"
+    assert blob_name == "pdf/raw/document.pdf"
+    
+    # Test with subdirectory
+    container, blob_name = fetcher.get_blob_path_for_file("report.pdf", "2024/Q1")
+    assert container == "conversionfiles"
+    assert blob_name == "pdf/raw/2024/Q1/report.pdf"
+    
+    # Test unknown file type (uses default)
+    container, blob_name = fetcher.get_blob_path_for_file("unknown.xyz")
+    assert container == "conversionfiles"
+    assert blob_name == "misc/other/unknown.xyz"
+    
+    # Test Windows path normalization
+    container, blob_name = fetcher.get_blob_path_for_file("file.txt", "folder\\subfolder")
+    assert container == "conversionfiles"
+    assert blob_name == "transcripts/raw/folder/subfolder/file.txt"
+
+@pytest.mark.asyncio
 async def test_storage_config_validation():
     """Test that storage configuration is properly structured."""
     from rag_shared.utils.config_dataclasses import StorageConfig, BlobStorageConfig
