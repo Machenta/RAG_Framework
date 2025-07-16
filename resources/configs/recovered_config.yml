@@ -79,23 +79,28 @@ app:
     api_key: ""           # <- pulled from Key Vault at runtime
 
     index:
-      name:            "test_transcript"
+      name:            "pdf_index_1"
       skillset_name:   "chat-skillset"
       indexer_name:    "chat-indexer"
       indexes_path:    "resources/AI_search_indexes"
-      index_yml_path:  "transcripts.yml"
+      index_yml_path:  "pdf_index.yml"
 
       vector_dim:       1536
       vector_field:     "contentVector"
       index_text_field: "text"
 
+      semantic_content_fields:
+        - "text"
+        - "source_pdf"
+      semantic_title_field: "text" 
+
       embedding:
         url:          "https://nunot-masez9tz-eastus2.cognitiveservices.azure.com/openai/deployments/text-embedding-ada-002/embeddings?api-version=2023-05-15"
+        vectorizer_base_url: "https://embeddingmodelrecoveredspaces.openai.azure.com/"
         deployment:   "text-embedding-ada-002"
         model_name:   "text-embedding-ada-002"
         api_version:  "2023-05-15"
         api_key: ""       # <- also filled from Key Vault
-
 
     form_recognizer:
       endpoint:      "https://pdf-analyser.cognitiveservices.azure.com/"
@@ -109,6 +114,43 @@ app:
     AzureSearchEmbeddingAPIKey: ["ai_search", "index", "embedding", "api_key"]
     OpenAIAPIKey:           ["llm", "api_key"]
     FormRecognizerAPIKey:         ['form_recognizer','api_key']
+
+  # Storage configuration for various Azure Storage services
+  storage:
+    # Global storage account settings (optional, if using single account)
+    default_account_name: "mystorageaccount"
+    default_resource_group: "myresourcegroup"
+    default_subscription_id: "your-subscription-id"
+    
+    # Blob Storage configuration
+    blob_storage:
+      account_name: "mystorageaccount"
+      container_name: "documents"
+      use_managed_identity: true  # Recommended for production
+      endpoint_suffix: "core.windows.net"  # Use "core.chinacloudapi.cn" for Azure China
+      # account_key and connection_string will be injected from Key Vault
+    
+    # File Share configuration  
+    file_share:
+      account_name: "mystorageaccount"
+      share_name: "shared-files"
+      directory_path: "uploads"  # Optional subdirectory
+      use_managed_identity: true
+      endpoint_suffix: "core.windows.net"
+    
+    # Table Storage configuration (for metadata, logs, etc.)
+    table_storage:
+      account_name: "mystorageaccount"
+      table_name: "DocumentMetadata"
+      use_managed_identity: true
+      endpoint_suffix: "core.windows.net"
+    
+    # Queue Storage configuration (for async processing)
+    queue_storage:
+      account_name: "mystorageaccount"
+      queue_name: "document-processing"
+      use_managed_identity: true
+      endpoint_suffix: "core.windows.net"
 
   other:
     debug: true

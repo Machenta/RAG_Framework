@@ -50,7 +50,7 @@ README.md
 
 ### 1. Configuration & Secrets
 - `rag_shared/utils/config.py`: Loads YAML config, injects secrets from Azure Key Vault, supports singleton pattern.
-- `rag_shared/utils/config_dataclasses.py`: Dataclasses for all config sections (fetchers, LLM, search, etc.).
+- `rag_shared/utils/config_dataclasses.py`: Dataclasses for all config sections (fetchers, LLM, search, storage, etc.).
 
 ### 2. Data Fetchers
 - `azure_search/azure_search.py`: Async fetcher for Azure Cognitive Search.
@@ -74,7 +74,15 @@ README.md
 ### 6. Index Management
 - `utils/index_manager.py`: Manages Azure Search index creation, semantic search configuration, and field mappings.
 
-### 7. Testing
+### 7. Storage Services
+- `utils/config_dataclasses.py`: Comprehensive storage configuration dataclasses for:
+  - **Blob Storage**: Document storage, file uploads, content archival
+  - **File Shares**: Shared file access, legacy application integration  
+  - **Table Storage**: Metadata storage, logging, key-value data
+  - **Queue Storage**: Async processing, message queuing
+- `fetchers/blob_storage.py`: Async fetcher for Azure Blob Storage with managed identity support
+
+### 8. Testing
 - `tests/test_azure_connections.py`: Tests all Azure service connections and LLM module logic.
 - `tests/test_config.py`: Tests config loading, secret injection, and singleton behavior.
 - `tests/test_index_manager.py`: Tests index creation and semantic field configuration.
@@ -89,12 +97,12 @@ README.md
 - **Responsibility:** Load YAML configuration and environment variables, inject secrets from Azure Key Vault using managed identity or environment fallbacks, and provide a singleton `Config` instance.
 - **Flow:** On startup, `Config` reads `resources/configs/*.yml`, maps into `AppConfig`, initializes logging, and lazily resolves secrets upon first access.
 
-### Data Fetchers Module
+### 2. Data Fetchers
 - **Files:**
   - `azure_search/azure_search.py`
   - `rest_api/rest_api.py`
   - `sql_server.py`, `postgres.py`
-  - `blob_storage.py` (stub)
+  - `blob_storage.py` (Azure Blob Storage with managed identity support)
 - **Responsibility:** Implement `DataFetcher.fetch(**kwargs)` to asynchronously retrieve data from external sources.
 - **Processors:** Registered via `register_processor()`, allowing post-fetch transformations (e.g. flattening, filtering).
 - **Flow:** `RagOrchestrator` calls each fetcher concurrently, gathers raw data, applies the configured processor, and stores results under their fetcher key.

@@ -77,7 +77,52 @@ async def test_azure_search_connection(config):
 #     except Exception as e:
 #         pytest.fail(f"REST API connection failed: {e}")
 
-# Blob Storage fetcher is not implemented, so no test for it yet.
+# Blob Storage fetcher is now implemented!
+from rag_shared.core.fetchers.blob_storage import BlobStorageFetcher
+
+@pytest.mark.asyncio
+async def test_blob_storage_connection(config):
+    """Test Azure Blob Storage connection."""
+    try:
+        # Skip if no blob storage config
+        if not config.app.storage or not config.app.storage.blob_storage:
+            pytest.skip("No blob storage configuration found")
+            
+        fetcher = BlobStorageFetcher(config)
+        
+        # Test with a simple blob fetch (you may need to adjust blob_name)
+        result = await fetcher.fetch(
+            blob_name="test.txt",  # Adjust this to a blob that exists in your storage
+            encoding="utf-8"
+        )
+        
+        assert "source" in result and result["source"] == "blob_storage"
+        assert "blob_name" in result
+        
+        # Clean up
+        await fetcher.close()
+        
+    except Exception as e:
+        pytest.fail(f"Blob Storage connection failed: {e}")
+
+@pytest.mark.asyncio
+async def test_storage_config_validation():
+    """Test that storage configuration is properly structured."""
+    from rag_shared.utils.config_dataclasses import StorageConfig, BlobStorageConfig
+    
+    # Test blob storage config
+    blob_config = BlobStorageConfig(
+        account_name="teststorage",
+        container_name="testcontainer",
+        use_managed_identity=True
+    )
+    
+    storage_config = StorageConfig(blob_storage=blob_config)
+    
+    assert storage_config.blob_storage is not None
+    assert storage_config.blob_storage.account_name == "teststorage"
+    assert storage_config.blob_storage.use_managed_identity is True
+    assert storage_config.blob_storage.endpoint_suffix == "core.windows.net"  # default
 
 # --- LLM module tests ---
 import asyncio

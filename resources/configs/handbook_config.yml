@@ -109,6 +109,43 @@ app:
     AzureSearchEmbeddingAPIKey: ["ai_search", "index", "embedding", "api_key"]
     OpenAIAPIKey:           ["llm", "api_key"]
     FormRecognizerAPIKey:         ['form_recognizer','api_key']
+  
+  # Storage configuration for various Azure Storage services
+  storage:
+    # Global storage account settings (optional, if using single account)
+    default_account_name: "mystorageaccount"
+    default_resource_group: "myresourcegroup"
+    default_subscription_id: "your-subscription-id"
+    
+    # Blob Storage configuration
+    blob_storage:
+      account_name: "mystorageaccount"
+      container_name: "documents"
+      use_managed_identity: true  # Recommended for production
+      endpoint_suffix: "core.windows.net"  # Use "core.chinacloudapi.cn" for Azure China
+      # account_key and connection_string will be injected from Key Vault
+    
+    # File Share configuration  
+    file_share:
+      account_name: "mystorageaccount"
+      share_name: "shared-files"
+      directory_path: "uploads"  # Optional subdirectory
+      use_managed_identity: true
+      endpoint_suffix: "core.windows.net"
+    
+    # Table Storage configuration (for metadata, logs, etc.)
+    table_storage:
+      account_name: "mystorageaccount"
+      table_name: "DocumentMetadata"
+      use_managed_identity: true
+      endpoint_suffix: "core.windows.net"
+    
+    # Queue Storage configuration (for async processing)
+    queue_storage:
+      account_name: "mystorageaccount"
+      queue_name: "document-processing"
+      use_managed_identity: true
+      endpoint_suffix: "core.windows.net"
 
   other:
     debug: true

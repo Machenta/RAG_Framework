@@ -133,6 +133,56 @@ class FormRecognizerConfig:
     api_key:      str            = field(default="", repr=False)   # secret
 
 @dataclass
+class BlobStorageConfig:
+    account_name: str
+    container_name: str
+    account_key: Optional[str] = field(default="", repr=False)  # secret, can use managed identity instead
+    connection_string: Optional[str] = field(default="", repr=False)  # secret alternative
+    use_managed_identity: Optional[bool] = True  # prefer managed identity over keys
+    endpoint_suffix: Optional[str] = "core.windows.net"  # for sovereign clouds
+
+@dataclass
+class FileShareConfig:
+    account_name: str
+    share_name: str
+    directory_path: Optional[str] = None  # subdirectory within the share
+    account_key: Optional[str] = field(default="", repr=False)  # secret
+    connection_string: Optional[str] = field(default="", repr=False)  # secret alternative
+    use_managed_identity: Optional[bool] = True
+    endpoint_suffix: Optional[str] = "core.windows.net"
+
+@dataclass
+class TableStorageConfig:
+    account_name: str
+    table_name: str
+    account_key: Optional[str] = field(default="", repr=False)  # secret
+    connection_string: Optional[str] = field(default="", repr=False)  # secret alternative
+    use_managed_identity: Optional[bool] = True
+    endpoint_suffix: Optional[str] = "core.windows.net"
+
+@dataclass
+class QueueStorageConfig:
+    account_name: str
+    queue_name: str
+    account_key: Optional[str] = field(default="", repr=False)  # secret
+    connection_string: Optional[str] = field(default="", repr=False)  # secret alternative
+    use_managed_identity: Optional[bool] = True
+    endpoint_suffix: Optional[str] = "core.windows.net"
+
+@dataclass
+class StorageConfig:
+    # Different storage services
+    blob_storage: Optional[BlobStorageConfig] = None
+    file_share: Optional[FileShareConfig] = None
+    table_storage: Optional[TableStorageConfig] = None
+    queue_storage: Optional[QueueStorageConfig] = None
+    
+    # Global storage account settings (if using a single storage account)
+    default_account_name: Optional[str] = None
+    default_resource_group: Optional[str] = None
+    default_subscription_id: Optional[str] = None
+
+@dataclass
 class OtherConfig:
     debug: Optional[bool] = None
     log_level: Optional[str] = None
@@ -147,6 +197,16 @@ class SecretsMapping:
     AzureSearchEmbeddingAPIKey: List[str]
     OpenAIAPIKey:               List[str]
     FormRecognizerAPIKey:       List[str]
+    
+    # Storage-related secrets (optional)
+    BlobStorageAccountKey:      Optional[List[str]] = None
+    BlobStorageConnectionString: Optional[List[str]] = None
+    FileShareAccountKey:        Optional[List[str]] = None
+    FileShareConnectionString:  Optional[List[str]] = None
+    TableStorageAccountKey:     Optional[List[str]] = None
+    TableStorageConnectionString: Optional[List[str]] = None
+    QueueStorageAccountKey:     Optional[List[str]] = None
+    QueueStorageConnectionString: Optional[List[str]] = None
 
 @dataclass
 class KVSecrets:
@@ -169,6 +229,7 @@ class AppConfig:
     fetchers: Optional[FetchersConfig] = None
     llm: Optional[LLMConfig] = None
     ai_search: Optional[AiSearchConfig] = None
+    storage: Optional[StorageConfig] = None
     form_recognizer: Optional[FormRecognizerConfig] = None
     secrets_mapping: Optional[SecretsMapping] = None
     other: Optional[OtherConfig] = None
