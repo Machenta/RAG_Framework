@@ -71,9 +71,13 @@ README.md
 - `prompt_builders/chat_prompt.py`: Chat-style prompt builder.
 - `prompt_builders/composite.py`: Composite builder for multi-source prompts.
 
-### 6. Testing
+### 6. Index Management
+- `utils/index_manager.py`: Manages Azure Search index creation, semantic search configuration, and field mappings.
+
+### 7. Testing
 - `tests/test_azure_connections.py`: Tests all Azure service connections and LLM module logic.
 - `tests/test_config.py`: Tests config loading, secret injection, and singleton behavior.
+- `tests/test_index_manager.py`: Tests index creation and semantic field configuration.
 
 ---
 

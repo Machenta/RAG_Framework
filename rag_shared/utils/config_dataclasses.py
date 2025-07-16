@@ -89,6 +89,7 @@ class LLMConfig:
 @dataclass
 class EmbeddingModelConfig:
     url:         str
+    vectorizer_base_url: str
     deployment:  str
     model_name:  str 
     api_version: str
@@ -108,6 +109,10 @@ class IndexConfig:
     vector_dim:       int
     vector_field:     str
     index_text_field: str
+
+    # semantic search fields
+    semantic_content_fields: Optional[List[str]] = None  # e.g., ["text", "content"]
+    semantic_title_field: Optional[str] = None           # e.g., "title" or "questionoranswer"
 
     # optional
     embedding: Optional[EmbeddingModelConfig] = None

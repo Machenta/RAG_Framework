@@ -40,6 +40,10 @@ class IndexManager:
             raise ValueError("Config.app.index must not be None")
         if index_cfg.indexes_path is None or index_cfg.index_yml_path is None:
             raise ValueError("Both index_cfg.indexes_path and index_cfg.index_yml_path must not be None")
+        
+        # Validate path formats and warn about potential issues
+        self._validate_config_paths(index_cfg)
+        
         self.schema = self._load_index_file()
 
         # ------ 2.  Azure clients ---------------------------------------
@@ -60,15 +64,40 @@ class IndexManager:
     def _resolve_path(self, *parts: str) -> str:
         """
         Join *parts* with `self.base_dir` **unless** the first part is absolute.
+        Handles both Windows and Unix-style path separators.
 
         Returns
         -------
         str  – Normalised, absolute path.
         """
-        candidate = os.path.join(*parts)
+        # Normalize path separators to avoid Windows backslash issues
+        normalized_parts = []
+        for part in parts:
+            # Replace backslashes with forward slashes for consistent handling
+            normalized_part = part.replace('\\', '/')
+            normalized_parts.append(normalized_part)
+        
+        candidate = os.path.join(*normalized_parts)
         if os.path.isabs(candidate):
             return os.path.normpath(candidate)          # absolute already
         return os.path.normpath(os.path.join(self._base_dir, candidate))
+
+    def _validate_config_paths(self, index_cfg: IndexConfig) -> None:
+        """
+        Validate and warn about path format issues in the configuration.
+        
+        Parameters
+        ----------
+        index_cfg : IndexConfig
+            The index configuration to validate.
+        """
+        if index_cfg.indexes_path and '\\' in index_cfg.indexes_path:
+            print(f"[IndexManager] Warning: Found backslashes in indexes_path '{index_cfg.indexes_path}'. "
+                  f"Consider using forward slashes for cross-platform compatibility.")
+        
+        if index_cfg.index_yml_path and '\\' in index_cfg.index_yml_path:
+            print(f"[IndexManager] Warning: Found backslashes in index_yml_path '{index_cfg.index_yml_path}'. "
+                  f"Consider using forward slashes for cross-platform compatibility.")
 
     def _load_index_file(self) -> Dict[str, Any]:
         """
@@ -144,7 +173,6 @@ class IndexManager:
 
             fields.append(SearchField(name=f.get("name"), type=dtype, **kwargs))
 
-        vs = self.schema.get("vector_search", {})
         vector_search = VectorSearch(
             algorithms=[
                 HnswAlgorithmConfiguration(name="hnsw-config")
@@ -161,10 +189,10 @@ class IndexManager:
                     vectorizer_name="azure-oai",
                     kind="azureOpenAI",
                     parameters=AzureOpenAIVectorizerParameters(
-                        resource_url=self.config.app.ai_search.endpoint,  # type: ignore
+                        resource_url=self.config.app.ai_search.index.embedding.vectorizer_base_url,  # type: ignore
                         deployment_name=self.config.app.ai_search.index.embedding.deployment,  # type: ignore
                         model_name=self.config.app.ai_search.index.embedding.model_name,  # type: ignore
-                        api_key=self.config.app.ai_search.api_key  # type: ignore
+                        api_key=self.config.app.ai_search.index.embedding.api_key  # type: ignore
                     )
                 )
             ]
@@ -173,8 +201,13 @@ class IndexManager:
         semantic_cfg = SemanticConfiguration(
             name="default-semantic",
             prioritized_fields=SemanticPrioritizedFields(
-                content_fields=[SemanticField(field_name="text")],
-                title_field=SemanticField(field_name="questionoranswer")
+                content_fields=[
+                    SemanticField(field_name=field_name) 
+                    for field_name in (self.config.app.ai_search.index.semantic_content_fields or ["text"])  # type: ignore
+                ],
+                title_field=SemanticField(
+                    field_name=self.config.app.ai_search.index.semantic_title_field or "questionoranswer"  # type: ignore
+                ) if self.config.app.ai_search.index.semantic_title_field else None  # type: ignore
             )
         )
         semantic_search = SemanticSearch(configurations=[semantic_cfg])
@@ -199,7 +232,7 @@ class IndexManager:
 if __name__ == '__main__':
     from rag_shared.utils.config import Config
     cfg = Config(key_vault_name="RecoveredSpacesKV",
-                 config_filename="recovered_config.yml",
+                 config_filename="handbook_config.yml",
                  config_folder="resources/configs")
     
     # check the paths are correct for the index manager
