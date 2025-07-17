@@ -1,0 +1,91 @@
+# Example configuration with Azure Storage services
+
+app:
+  name: "RAG_App_With_Storage"
+  deployment: "production"
+
+  # Storage configuration for various Azure Storage services
+  storage:
+    # Global storage account settings (optional, if using single account)
+    default_account_name: "mystorageaccount"
+    default_resource_group: "myresourcegroup"
+    default_subscription_id: "your-subscription-id"
+    
+    # Blob Storage configuration
+    blob_storage:
+      account_name: "mystorageaccount"
+      container_name: "documents"
+      use_managed_identity: true  # Recommended for production
+      endpoint_suffix: "core.windows.net"  # Use "core.chinacloudapi.cn" for Azure China
+      # account_key and connection_string will be injected from Key Vault
+    
+    # File Share configuration  
+    file_share:
+      account_name: "mystorageaccount"
+      share_name: "shared-files"
+      directory_path: "uploads"  # Optional subdirectory
+      use_managed_identity: true
+      endpoint_suffix: "core.windows.net"
+    
+    # Table Storage configuration (for metadata, logs, etc.)
+    table_storage:
+      account_name: "mystorageaccount"
+      table_name: "DocumentMetadata"
+      use_managed_identity: true
+      endpoint_suffix: "core.windows.net"
+    
+    # Queue Storage configuration (for async processing)
+    queue_storage:
+      account_name: "mystorageaccount"
+      queue_name: "document-processing"
+      use_managed_identity: true
+      endpoint_suffix: "core.windows.net"
+
+  # Existing configurations...
+  llm:
+    type: azure_openai
+    deployment: gpt-4
+    model_name: gpt-4
+    endpoint: "https://your-openai.openai.azure.com/"
+    api_version: "2024-02-15-preview"
+    api_base_url: "https://your-openai.openai.azure.com/"
+
+  ai_search:
+    endpoint: "https://your-search.search.windows.net"
+    index:
+      name: "documents-index"
+      skillset_name: "document-skillset"
+      indexer_name: "document-indexer"
+      indexes_path: "resources/AI_search_indexes"
+      index_yml_path: "documents.yml"
+      vector_dim: 1536
+      vector_field: "contentVector"
+      index_text_field: "text"
+
+  # Secret mappings for storage services
+  secrets_mapping:
+    # Existing secrets
+    AzureSearchAPIKey: ["ai_search", "api_key"]
+    AzureSearchEmbeddingAPIKey: ["ai_search", "index", "embedding", "api_key"]
+    OpenAIAPIKey: ["llm", "api_key"]
+    
+    # Storage secrets (use either account_key OR connection_string, not both)
+    BlobStorageAccountKey: ["storage", "blob_storage", "account_key"]
+    # BlobStorageConnectionString: ["storage", "blob_storage", "connection_string"]  # Alternative
+    
+    FileShareAccountKey: ["storage", "file_share", "account_key"]
+    # FileShareConnectionString: ["storage", "file_share", "connection_string"]  # Alternative
+    
+    TableStorageAccountKey: ["storage", "table_storage", "account_key"]
+    QueueStorageAccountKey: ["storage", "queue_storage", "account_key"]
+
+  other:
+    debug: false
+    log_level: INFO
+    environment: production
+
+# Notes:
+# 1. For production, prefer use_managed_identity: true over account keys
+# 2. Store account keys/connection strings in Azure Key Vault, not in config files
+# 3. You can mix and match - some services with managed identity, others with keys
+# 4. endpoint_suffix allows for sovereign cloud deployments (Azure China, Government, etc.)

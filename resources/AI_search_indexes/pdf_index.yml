@@ -1,0 +1,113 @@
+name: pdf_index_1
+
+fields:
+  # Unique identifier for every chunk (text or image)
+  - name: id
+    type: String
+    key: true
+    searchable: false
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  # Page number (from both text and vector pipelines)
+  - name: page_number
+    type: Int32
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  # For text chunks: the chunk‐within‐page index; for images: the group number
+  - name: chunk_index
+    type: Int32
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  # “paragraph”, “line”, “table” or “vector‐drawing”
+  - name: type
+    type: String
+    searchable: true
+    filterable: true
+    retrievable: true
+
+  # Only populated on text‐type documents
+  - name: text
+    type: String
+    searchable: true
+    retrievable: true
+    analyzer_name: standard.lucene
+
+  # Only populated on image‐type documents (relative or absolute file path / URL)
+  - name: image_path
+    type: String
+    filterable: true
+    retrievable: true
+
+  # Original PDF filename
+  - name: source_pdf
+    type: String
+    filterable: true
+    retrievable: true
+
+  # NEW: Extracted procedure title or section heading (e.g., "Step 1: Safety Protocol")
+  - name: procedureTitle
+    type: String
+    searchable: true  # Enables semantic matching
+    filterable: true  # Useful for queries
+    retrievable: true # Include in results
+    sortable: false   # Titles aren't typically sorted
+
+  # For images: pixel width & height
+  - name: width
+    type: Int32
+    filterable: true
+    retrievable: true
+
+  - name: height
+    type: Int32
+    filterable: true
+    retrievable: true
+
+  # Computed area = width × height
+  - name: area
+    type: Int32
+    filterable: true
+    retrievable: true
+
+  # (Optional) you could store bounding boxes, table rows/cols, speaker, etc.
+
+  # Shared vector field for semantic search
+  - name: contentVector
+    type: Collection
+    item_type: Single
+    vector:
+      dimensions: 1536           # adjust to your embedding model
+      profile_name: hnsw-profile
+    searchable: true
+    filterable: false
+    retrievable: false
+
+vector_search:
+  algorithms:
+    - name: hnsw-config
+  profiles:
+    - name: hnsw-profile
+      algorithm_configuration_name: hnsw-config
+      vectorizer_name: azure-oai
+  vectorizers:
+    - vectorizer_name: azure-oai
+      kind: azureOpenAI
+      parameters:
+        resource_url: https://<your-resource-name>.openai.azure.com/
+        deployment_name: text-embedding-ada-002
+        model_name: text-embedding-ada-002
+        api_key: YOUR_AZURE_OPENAI_KEY
+
+semantic_search:
+  configurations:
+    - name: default-semantic
+      prioritized_fields:
+        content_fields:
+          - text
+        title_field: procedureTitle  # UPDATED: Use this for semantic prioritization

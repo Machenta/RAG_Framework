@@ -1,0 +1,34 @@
+# Example configuration for semantic search fields in your YAML config
+
+app:
+  ai_search:
+    endpoint: "https://your-search-service.search.windows.net"
+    index:
+      name: "your-index-name"
+      skillset_name: "your-skillset"
+      indexer_name: "your-indexer"
+      indexes_path: "resources/AI_search_indexes"  # Use forward slashes for cross-platform compatibility
+      index_yml_path: "your-index.yml"             # Avoid backslashes like "folder\\file.yml"
+      vector_dim: 1536
+      vector_field: "contentVector"
+      index_text_field: "text"
+      
+      # NEW: Configurable semantic search fields
+      semantic_content_fields:
+        - "text"
+        - "content"
+        - "description"
+      semantic_title_field: "title"  # or "questionoranswer", "subject", etc.
+      
+      embedding:
+        deployment: "text-embedding-ada-002"
+        model_name: "text-embedding-ada-002"
+        api_version: "2023-05-15"
+
+# If semantic fields are not specified, the following defaults will be used:
+# semantic_content_fields: ["text"]
+# semantic_title_field: "questionoranswer"
+
+# Path Guidelines:
+# ✅ Good: "resources/configs/file.yml"
+# ❌ Avoid: "resources\\configs\\file.yml" (may cause issues on non-Windows systems)

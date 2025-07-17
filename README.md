@@ -49,8 +49,8 @@
 ## Key Components
 
 ### 1. Configuration & Secrets
-- `rag_shared/utils/config.py` or `config_loader.py`: Loads YAML, injects Key Vault secrets, supports singleton.  
-- `config_dataclasses.py` / Pydantic models: Typed definitions for fetchers, LLM, search, prompts, etc.
+- `rag_shared/utils/config.py`: Loads YAML config, injects secrets from Azure Key Vault, supports singleton pattern.
+- `rag_shared/utils/config_dataclasses.py`: Dataclasses for all config sections (fetchers, LLM, search, etc.).
 
 ### 2. Data Fetchers
 - Azure Cognitive Search: `azure_search/azure_search.py` or `azure_ai_search_fetcher.py`  
@@ -59,20 +59,34 @@
 - Blob Storage / File System: `blob_storage.py` (stub)  
 - Processors: Registered post-fetch transformations (flattening, filtering).
 
-### 3. Prompt Builders
-- `prompt_builders/base.py`: Abstract interface.  
-- ChatPromptBuilder (`chat_prompt.py`): Builds `role`/`content` message lists.  
-- CompositePromptBuilder (`composite.py`): Merges prompts.  
-- TemplatePromptBuilder (`template.py`): Renders Jinja2 templates.
+### 5. Prompt Builders
+- `prompt_builders/base.py`: Abstract interface for prompt builders.
+- `prompt_builders/chat_prompt.py`: Chat-style prompt builder.
+- `prompt_builders/composite.py`: Composite builder for multi-source prompts.
 
-### 4. LLM Models
-- `models/base.py`: `LLMModel` interface.  
-- Azure OpenAI (`azure_openai.py` / `azure_openai_model.py`): Wraps SDK for chat/completion.  
-- (Optional) OpenAI provider integration.
+### 6. Testing
+- `tests/test_azure_connections.py`: Tests all Azure service connections and LLM module logic.
+- `tests/test_config.py`: Tests config loading, secret injection, and singleton behavior.
 
-### 5. Orchestrators
-- RagOrchestrator (`rag_orchestrator.py` / `rack_orchestrator.py`): Coordinates fetch → process → build → LLM → assemble.  
-- ChatOrchestrator (`chat_orchestrator.py`): Manages multi-turn chat, history, and system prompts.
+---
+
+<!-- Detailed Module Descriptions and Interaction Flow -->
+## Module Descriptions & Interaction Flow
+
+### Configuration & Secrets Module
+- **File:** `rag_shared/utils/config.py`, `config_dataclasses.py`
+- **Responsibility:** Load YAML configuration and environment variables, inject secrets from Azure Key Vault using managed identity or environment fallbacks, and provide a singleton `Config` instance.
+- **Flow:** On startup, `Config` reads `resources/configs/*.yml`, maps into `AppConfig`, initializes logging, and lazily resolves secrets upon first access.
+
+### Data Fetchers Module
+- **Files:**
+  - `azure_search/azure_search.py`
+  - `rest_api/rest_api.py`
+  - `sql_server.py`, `postgres.py`
+  - `blob_storage.py` (stub)
+- **Responsibility:** Implement `DataFetcher.fetch(**kwargs)` to asynchronously retrieve data from external sources.
+- **Processors:** Registered via `register_processor()`, allowing post-fetch transformations (e.g. flattening, filtering).
+- **Flow:** `RagOrchestrator` calls each fetcher concurrently, gathers raw data, applies the configured processor, and stores results under their fetcher key.
 
 ### 6. API (FastAPI)
 - `api/routes.py`: Exposes `/v1/rag` and `/v1/chat`, handles request/response.
