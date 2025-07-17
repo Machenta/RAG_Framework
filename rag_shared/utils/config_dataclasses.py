@@ -1,14 +1,13 @@
+
 from typing import Optional, Dict, List, Any
-from dataclasses import dataclass, field
+from pydantic import BaseModel, Field
 
 # ---------------------------
 # YAML-config dataclasses
 # ---------------------------
 
-# Optional Dataclasses for each section of the YAML config
 
-@dataclass
-class AzureSearchParams:
+class AzureSearchParams(BaseModel):
     query: Optional[str] = None
     filter: Optional[str] = None
     top_k: Optional[int] = 5
@@ -24,61 +23,61 @@ class AzureSearchParams:
     hybrid: Optional[float] = None
     vector_field: Optional[str] = "contentVector"
 
-@dataclass
-class RestAPIParams:
+
+class RestAPIParams(BaseModel):
     base_url: Optional[str] = None
     token: Optional[str] = None
 
-@dataclass
-class RestAPIFetcherConfig:
+
+class RestAPIFetcherConfig(BaseModel):
     processor: Optional[str] = None
     params: Optional[RestAPIParams] = None
 
-@dataclass
-class AzureSearchFetcherConfig:
+
+class AzureSearchFetcherConfig(BaseModel):
     processor: Optional[str] = None
     params: Optional[AzureSearchParams] = None
 
 
-@dataclass
-class FetchersConfig:
+
+class FetchersConfig(BaseModel):
     RestAPIFetcher: Optional[RestAPIFetcherConfig] = None
     AzureSearchFetcher: Optional[AzureSearchFetcherConfig] = None
 
 
-@dataclass
-class PromptConfig:
+
+class PromptConfig(BaseModel):
     folder:   Optional[str]       = None          # e.g. "recovered_space"
     system:   Optional[str]       = None          # e.g. "system_prompt.j2"
-    defaults: List[str]           = field(default_factory=list)
+    defaults: List[str]           = Field(default_factory=list)
     # ↑ allow multiple user/assistant templates
 
 # ───────────────────────────────────────────────
 # 2.  Generation / sampling parameters
 # ───────────────────────────────────────────────
-@dataclass
-class GenerationParams:
+
+class GenerationParams(BaseModel):
     max_tokens:          Optional[int] = None
     temperature:         Optional[float] = None
     top_p:               Optional[float] = None
     frequency_penalty:   Optional[float] = None
     presence_penalty:    Optional[float] = None
-    stop:                Optional[List[str]] = field(default_factory=list)  # Fixed: use factory for mutable list
+    stop:                Optional[List[str]] = Field(default_factory=list)
     repetition_penalty:  Optional[float] = None
     n:                   Optional[int] = None
     stream:              Optional[bool] = None
-    logit_bias:          Optional[Dict[str, int]] = field(default_factory=dict)  # Fixed: use factory for mutable dict
+    logit_bias:          Optional[Dict[str, int]] = Field(default_factory=dict)
 
 
-@dataclass
-class LLMConfig:
+
+class LLMConfig(BaseModel):
     type:           str
     deployment:     str
     model_name:     str  
     endpoint:       str
     api_base_url:   str
     api_version:    str
-    api_key:        str = field(default="", repr=False)
+    api_key:        str = Field(default="", repr=False)
 
     processor:      Optional[str]           = None
     prompts:        Optional[PromptConfig]  = None
@@ -86,20 +85,20 @@ class LLMConfig:
 
 
 
-@dataclass
-class EmbeddingModelConfig:
+
+class EmbeddingModelConfig(BaseModel):
     url:         str
     vectorizer_base_url: str
     deployment:  str
     model_name:  str 
     api_version: str
-    api_key:     str = field(default="", repr=False)      # secret
+    api_key:     str = Field(default="", repr=False)      # secret
     endpoint:    Optional[str] = None
 
 
 # ── level 2:  index settings ──────────────────────────────────────
-@dataclass
-class IndexConfig:
+
+class IndexConfig(BaseModel):
     # mandatory
     name:             str
     skillset_name:    str
@@ -118,30 +117,24 @@ class IndexConfig:
     embedding: Optional[EmbeddingModelConfig] = None
 
 # ── level 1:  service-wide Azure AI Search block ──────────────────
-@dataclass  
-class AiSearchConfig:
+
+class AiSearchConfig(BaseModel):
     index:   IndexConfig 
     endpoint: str
-    api_key: str = field(default="", repr=False)          # secret
-     
-@dataclass
-class FormRecognizerConfig:
+    api_key: str = Field(default="", repr=False)          # secret
+
+class FormRecognizerConfig(BaseModel):
     endpoint:     str
     api_version:  Optional[str] = None
     model_id:     str            = "prebuilt-document"
     pages_per_call: Optional[int] = 2
-    api_key:      str            = field(default="", repr=False)   # secret
+    api_key:      str            = Field(default="", repr=False)   # secret
 
-@dataclass
-class FileTypeMappingConfig:
+
+class FileTypeMappingConfig(BaseModel):
     """Configuration for mapping file types to storage containers and directories."""
-    
-    # Base container name (all files go here)
     base_container: str = "conversionfiles"
-    
-    # File extension to subdirectory mapping (will be joined with base_container)
-    # Using forward slashes - they'll be normalized for the target platform
-    file_type_mappings: Dict[str, str] = field(default_factory=lambda: {
+    file_type_mappings: Dict[str, str] = Field(default_factory=lambda: {
         ".pdf": "pdf/raw",
         ".txt": "transcripts/raw", 
         ".docx": "docs/raw",
@@ -156,133 +149,89 @@ class FileTypeMappingConfig:
         ".jpg": "images/raw",
         ".jpeg": "images/raw"
     })
-    
-    # Default directory for unknown file types
     default_directory: str = "other/raw"
-    
-    # Whether to use file extension case-insensitive matching
     case_insensitive: bool = True
-    
+
     def get_container_path(self, file_extension: str) -> str:
-        """
-        Get the full container path for a given file extension.
-        
-        Args:
-            file_extension: File extension (e.g., ".pdf", ".txt")
-            
-        Returns:
-            Full path like "conversionfiles/pdf/raw"
-        """
         if self.case_insensitive:
             file_extension = file_extension.lower()
-            
-        # Get the subdirectory, or use default
         subdirectory = self.file_type_mappings.get(file_extension, self.default_directory)
-        
-        # Join with base container using forward slashes (cross-platform safe)
         return f"{self.base_container}/{subdirectory}"
-    
+
     def get_blob_name(self, filename: str, subdirectory: str = "") -> str:
-        """
-        Generate a blob name for a file, including directory structure.
-        
-        Args:
-            filename: Original filename
-            subdirectory: Optional additional subdirectory
-            
-        Returns:
-            Blob name like "pdf/raw/document.pdf" or "pdf/raw/2024/document.pdf"
-        """
         import os
-        
-        # Extract file extension
         _, ext = os.path.splitext(filename)
-        
-        # Get the base directory path
         directory_path = self.file_type_mappings.get(
             ext.lower() if self.case_insensitive else ext, 
             self.default_directory
         )
-        
-        # Add subdirectory if provided
         if subdirectory:
-            # Normalize subdirectory path separators
             subdirectory = subdirectory.replace('\\', '/')
             directory_path = f"{directory_path}/{subdirectory}"
-        
-        # Return the full blob name (always use forward slashes for blob storage)
         return f"{directory_path}/{filename}"
 
-@dataclass
-class BlobStorageConfig:
+
+class BlobStorageConfig(BaseModel):
     account_name: str
     container_name: str
-    account_key: Optional[str] = field(default="", repr=False)  # secret, can use managed identity instead
-    connection_string: Optional[str] = field(default="", repr=False)  # secret alternative
-    use_managed_identity: Optional[bool] = True  # prefer managed identity over keys
-    endpoint_suffix: Optional[str] = "core.windows.net"  # for sovereign clouds
-    
-    # File type mapping configuration
-    file_mappings: Optional[FileTypeMappingConfig] = field(default_factory=FileTypeMappingConfig)
+    account_key: Optional[str] = Field(default="", repr=False)
+    connection_string: Optional[str] = Field(default="", repr=False)
+    use_managed_identity: Optional[bool] = True
+    endpoint_suffix: Optional[str] = "core.windows.net"
+    file_mappings: Optional[FileTypeMappingConfig] = Field(default_factory=FileTypeMappingConfig)
 
-@dataclass
-class FileShareConfig:
+
+class FileShareConfig(BaseModel):
     account_name: str
     share_name: str
-    directory_path: Optional[str] = None  # subdirectory within the share
-    account_key: Optional[str] = field(default="", repr=False)  # secret
-    connection_string: Optional[str] = field(default="", repr=False)  # secret alternative
+    directory_path: Optional[str] = None
+    account_key: Optional[str] = Field(default="", repr=False)
+    connection_string: Optional[str] = Field(default="", repr=False)
     use_managed_identity: Optional[bool] = True
     endpoint_suffix: Optional[str] = "core.windows.net"
 
-@dataclass
-class TableStorageConfig:
+
+class TableStorageConfig(BaseModel):
     account_name: str
     table_name: str
-    account_key: Optional[str] = field(default="", repr=False)  # secret
-    connection_string: Optional[str] = field(default="", repr=False)  # secret alternative
+    account_key: Optional[str] = Field(default="", repr=False)
+    connection_string: Optional[str] = Field(default="", repr=False)
     use_managed_identity: Optional[bool] = True
     endpoint_suffix: Optional[str] = "core.windows.net"
 
-@dataclass
-class QueueStorageConfig:
+
+class QueueStorageConfig(BaseModel):
     account_name: str
     queue_name: str
-    account_key: Optional[str] = field(default="", repr=False)  # secret
-    connection_string: Optional[str] = field(default="", repr=False)  # secret alternative
+    account_key: Optional[str] = Field(default="", repr=False)
+    connection_string: Optional[str] = Field(default="", repr=False)
     use_managed_identity: Optional[bool] = True
     endpoint_suffix: Optional[str] = "core.windows.net"
 
-@dataclass
-class StorageConfig:
-    # Different storage services
+
+class StorageConfig(BaseModel):
     blob_storage: Optional[BlobStorageConfig] = None
     file_share: Optional[FileShareConfig] = None
     table_storage: Optional[TableStorageConfig] = None
     queue_storage: Optional[QueueStorageConfig] = None
-    
-    # Global storage account settings (if using a single storage account)
     default_account_name: Optional[str] = None
     default_resource_group: Optional[str] = None
     default_subscription_id: Optional[str] = None
 
-@dataclass
-class OtherConfig:
+
+class OtherConfig(BaseModel):
     debug: Optional[bool] = None
     log_level: Optional[str] = None
     telemetry_enabled: Optional[bool] = None
     environment: Optional[str] = None
     custom_setting: Optional[str] = None
 
-@dataclass
-class SecretsMapping:
-    # Map of secret names to their attribute paths
+
+class SecretsMapping(BaseModel):
     AzureSearchAPIKey:          List[str]
     AzureSearchEmbeddingAPIKey: List[str]
     OpenAIAPIKey:               List[str]
     FormRecognizerAPIKey:       List[str]
-    
-    # Storage-related secrets (optional)
     BlobStorageAccountKey:      Optional[List[str]] = None
     BlobStorageConnectionString: Optional[List[str]] = None
     FileShareAccountKey:        Optional[List[str]] = None
@@ -292,22 +241,48 @@ class SecretsMapping:
     QueueStorageAccountKey:     Optional[List[str]] = None
     QueueStorageConnectionString: Optional[List[str]] = None
 
-@dataclass
-class KVSecrets:
-    # Azure AI Search secrets
-    search_endpoint:            Optional[str] = field(default=None, repr=False)
-    search_key:                 Optional[str] = field(default=None, repr=False)
-    search_embedding_url:       Optional[str] = field(default=None, repr=False)
-    search_embedding_api_key:   Optional[str] = field(default=None, repr=False)
-    search_embedding_api_ver:   Optional[str] = field(default=None, repr=False)
 
-    # LLM Model secrets
-    openai_endpoint:            Optional[str] = field(default=None, repr=False)
-    openai_key:                 Optional[str] = field(default=None, repr=False)
-    openai_model_name:          Optional[str] = field(default=None, repr=False)
+class KVSecrets(BaseModel):
+    search_endpoint:            Optional[str] = None
+    search_key:                 Optional[str] = None
+    search_embedding_url:       Optional[str] = None
+    search_embedding_api_key:   Optional[str] = None
+    search_embedding_api_ver:   Optional[str] = None
+    openai_endpoint:            Optional[str] = None
+    openai_key:                 Optional[str] = None
+    openai_model_name:          Optional[str] = None
 
-@dataclass
-class AppConfig:
+
+
+class ExperimentVariant(BaseModel):
+    name: str
+    prompt_path: str
+    weight: int = 50
+
+class Experiment(BaseModel):
+    name: str
+    status: str = "inactive"
+    traffic_split: int = 0
+    variants: Dict[str, ExperimentVariant] = Field(default_factory=dict)
+    success_metrics: List[str] = Field(default_factory=list)
+    enabled: bool = False
+
+class ExperimentsConfig(BaseModel):
+    experiments: Dict[str, Experiment] = Field(default_factory=dict)
+    
+    def get_experiment(self, name: str) -> Optional[Experiment]:
+        """Get an experiment by name with proper type hints for autocomplete."""
+        return self.experiments.get(name)
+    
+    def __getitem__(self, name: str) -> Experiment:
+        """Allow dictionary-style access with proper type hints."""
+        return self.experiments[name]
+    
+    def __contains__(self, name: str) -> bool:
+        """Allow 'name in experiments' syntax."""
+        return name in self.experiments
+
+class AppConfig(BaseModel):
     name: str = "DefaultApp"
     deployment: Optional[str] = None
     fetchers: Optional[FetchersConfig] = None
@@ -316,4 +291,5 @@ class AppConfig:
     storage: Optional[StorageConfig] = None
     form_recognizer: Optional[FormRecognizerConfig] = None
     secrets_mapping: Optional[SecretsMapping] = None
+    experiments: Optional[ExperimentsConfig] = None
     other: Optional[OtherConfig] = None

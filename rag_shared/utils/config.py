@@ -2,15 +2,13 @@ import os
 import yaml
 import logging
 import copy
-from dataclasses import dataclass, asdict
-from typing import Optional, Dict,Any, Type
-from typing import TypeVar, Type, cast
-from dacite import from_dict
+from typing import Optional, Dict, Any, Type, TypeVar, cast
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 
 from rag_shared.utils.config_dataclasses import (
-    AppConfig
+    AppConfig, ExperimentsConfig, LLMConfig, FetchersConfig,
+    AiSearchConfig, StorageConfig, FormRecognizerConfig, OtherConfig, SecretsMapping, Experiment
 )
 
 # configure azure identity logging to warning
@@ -81,7 +79,6 @@ class SingletonMeta(type):
             SingletonMeta._instances[key] = super().__call__(*args, **kwargs)
         return cast(T, SingletonMeta._instances[key])
 
-@dataclass
 class Config(metaclass=SingletonMeta):
     """Load YAML config + Key Vault secrets.
 
@@ -109,43 +106,31 @@ class Config(metaclass=SingletonMeta):
             )
         with open(self._config_path, 'r', encoding='utf-8') as f:
             raw = yaml.safe_load(f) or {}
-        
-        self.secrets_mapping = raw.get("secrets_mapping", {})
 
-        # Map into the AppConfig dataclass
-        self.app: AppConfig = from_dict(AppConfig, raw.get("app", {}))
+        # Map into the AppConfig Pydantic model
+        self.app: AppConfig = AppConfig.model_validate(raw.get("app", {}))
 
-        # Get the screts mapping from the app config
-        if not hasattr(self.app, "secrets_mapping"):
-            raise ValueError("AppConfig must have a 'secrets_mapping' attribute")
-
-
-        self.secrets_mapping = self.app.secrets_mapping
+        # Get the secrets mapping from the app config
+        if not hasattr(self.app, "secrets_mapping") or self.app.secrets_mapping is None:
+            logging.warning("AppConfig missing 'secrets_mapping' attribute; skipping secret injection")
+            # Don't create a default secrets mapping - let the application handle this
+            # Creating empty mappings could expose security vulnerabilities
+            self.secrets_mapping = None
+        else:
+            self.secrets_mapping = self.app.secrets_mapping
 
         # Initialize Python logging level from config.other.log_level
-        lvl = (
+        log_level = (
             self.app.other.log_level.upper()
             if (self.app.other and self.app.other.log_level)
             else "INFO"
-        )
-        logging.basicConfig(level=getattr(logging, lvl, logging.INFO))
-
-        # KV client will be lazily created on first use
-        self._kv_client: Optional[SecretClient] = None
-
-        # map to dataclass structure
-        self.app: AppConfig = from_dict(AppConfig, raw.get("app", {}))
-
-        # ── 3) init logging level from config ────────────────────────────
-        log_level = (
-            (self.app.other.log_level.upper() if self.app.other and self.app.other.log_level else "INFO")
         )
         logging.basicConfig(level=getattr(logging, log_level, logging.INFO))
 
         # Key Vault client is lazy‑created when first secret is requested
         self._kv_client: Optional[SecretClient] = None
 
-        # ── 4) inject secrets from Key Vault into AppConfig ─────────────
+        # ── inject secrets from Key Vault into AppConfig ─────────────
         self._inject_secrets()
         
         # Store the original raw config for comparison when saving
@@ -172,22 +157,63 @@ class Config(metaclass=SingletonMeta):
         Inject secrets from Key Vault into the config object using secrets_mapping.
         Handles both dataclass and pydantic/namespace mapping objects.
         """
-        # If secrets_mapping is a dataclass or namespace, convert to dict
-        mapping = (
-            vars(self.secrets_mapping)
-            if hasattr(self.secrets_mapping, "__dict__")
-            else self.secrets_mapping
-        )
+        if self.secrets_mapping is None:
+            logging.info("No secrets mapping configured, skipping secret injection")
+            return
+            
+        # If secrets_mapping is a Pydantic model, convert to dict
+        if hasattr(self.secrets_mapping, 'model_dump'):
+            mapping = self.secrets_mapping.model_dump()
+        elif hasattr(self.secrets_mapping, "__dict__"):
+            mapping = vars(self.secrets_mapping)
+        else:
+            mapping = self.secrets_mapping
+            
         if not isinstance(mapping, dict):
             logging.warning("secrets_mapping is not a dict, skipping secret injection.")
             return
+            
         for secret_name, attr_path in mapping.items():
+            # Skip None values (optional secrets)
+            if attr_path is None:
+                continue
             # Support attribute paths as lists or tuples
             if not isinstance(attr_path, (list, tuple)):
+                logging.warning(f"Invalid attribute path for secret '{secret_name}': {attr_path}")
                 continue
-            secret_value = self._get_secret(secret_name)
-            if secret_value is not None:
-                set_nested_attr(self, list(attr_path), secret_value)
+            try:
+                secret_value = self._get_secret(secret_name)
+                if secret_value is not None:
+                    set_nested_attr(self, list(attr_path), secret_value)
+            except Exception as e:
+                logging.error(f"Failed to inject secret '{secret_name}': {e}")
+                # Continue with other secrets even if one fails
+
+    def _merge_section(self, current_dict: Dict[str, Any], reloaded_obj: Any, section_name: str):
+        """
+        Generic helper to merge in-memory changes for a specific section.
+        If the section exists in current (in-memory) but not in reloaded, preserve it.
+        Customize or extend for deeper merging if needed (e.g., for nested dicts).
+        """
+        if section_name in current_dict and getattr(reloaded_obj, section_name, None) is None:
+            section_data = current_dict[section_name]
+            # Convert back to the appropriate Pydantic model if needed
+            section_class_map = {
+                'experiments': ExperimentsConfig,
+                'llm': LLMConfig,
+                'fetchers': FetchersConfig,
+                'ai_search': AiSearchConfig,
+                'storage': StorageConfig,
+                'form_recognizer': FormRecognizerConfig,
+                'other': OtherConfig,
+                'secrets_mapping': SecretsMapping,
+            }
+            if section_name in section_class_map:
+                merged_section = section_class_map[section_name].model_validate(section_data)
+                setattr(reloaded_obj, section_name, merged_section)
+            else:
+                # Fallback for simple dicts or unknown sections
+                setattr(reloaded_obj, section_name, section_data)
 
     def save(self) -> bool:
         """
@@ -208,8 +234,8 @@ class Config(metaclass=SingletonMeta):
                 except Exception as e:
                     logging.warning(f"Failed to create backup of config file: {e}")
             
-            # Convert the app dataclass to a dict with deep copy for nested structures
-            app_dict = copy.deepcopy(asdict(self.app))
+            # Convert the app Pydantic model to a dict with deep copy for nested structures
+            app_dict = copy.deepcopy(self.app.model_dump())
             
             # Create the structure of the config file
             config_data = {"app": app_dict}
@@ -232,12 +258,61 @@ class Config(metaclass=SingletonMeta):
             return False
 
     def to_dict(self) -> Dict[str, Any]:
-        data: Dict[str, Any] = {'app': asdict(self.app)}
+        data: Dict[str, Any] = {'app': self.app.model_dump()}
         # Define keys you want to hide
         sensitive_keys = {"api_key", "key", "endpoint"}
         data = mask_sensitive_keys(data, sensitive_keys)
         return data
     
+    def get_experiment(self, name: str) -> Optional[Experiment]:
+        """Get an experiment by name with proper type hints for autocomplete.
+        
+        Usage:
+            experiment = cfg.get_experiment("prompt_optimization")
+            if experiment:
+                experiment.enabled = True  # This will have autocomplete!
+        """
+        if self.app.experiments:
+            return self.app.experiments.get_experiment(name)
+        return None
+
+    def is_production(self) -> bool:
+        """Check if running in production environment."""
+        if not self.app.other or not self.app.other.environment:
+            return False
+        return self.app.other.environment.lower() == "production"
+    
+    def get_safe_config_summary(self) -> Dict[str, Any]:
+        """
+        Get a safe summary of configuration for monitoring/debugging.
+        
+        Returns only non-sensitive information suitable for logging or APIs.
+        """
+        summary = {
+            "app_name": self.app.name,
+            "deployment": self.app.deployment,
+            "environment": self.app.other.environment if self.app.other else "unknown",
+            "debug_mode": self.app.other.debug if self.app.other else False,
+            "log_level": self.app.other.log_level if self.app.other else "INFO",
+            "has_llm": self.app.llm is not None,
+            "has_ai_search": self.app.ai_search is not None,
+            "has_experiments": self.app.experiments is not None,
+            "has_storage": self.app.storage is not None,
+            "secrets_configured": self.secrets_mapping is not None,
+        }
+        
+        # Add experiment status (safe information)
+        if self.app.experiments:
+            summary["experiments"] = {}
+            for exp_name, experiment in self.app.experiments.experiments.items():
+                summary["experiments"][exp_name] = {
+                    "enabled": experiment.enabled,
+                    "status": experiment.status,
+                    "traffic_split": experiment.traffic_split
+                    # Note: variants and success_metrics excluded for brevity
+                }
+        
+        return summary
 
     def reload(self) -> bool:
         """
@@ -259,30 +334,37 @@ class Config(metaclass=SingletonMeta):
             with open(self._config_path, 'r', encoding='utf-8') as f:
                 raw = yaml.safe_load(f) or {}
             
-            # Preserve current non-secret state for merging (optional: prevents loss of unsaved changes)
-            current_app_dict = asdict(self.app)
+            # Preserve current non-secret state for merging
+            current_app_dict = self.app.model_dump()
             
-            # Update the secrets mapping and map to AppConfig
-            self.secrets_mapping = raw.get("secrets_mapping", {})
-            self.app = from_dict(AppConfig, raw.get("app", {}))
+            # Reload the app from raw (pre-merge)
+            self.app = AppConfig.model_validate(raw.get("app", {}))
             
-            # Merge any in-memory non-secret changes back (optional; customize as needed)
-            # Example: Preserve updated max_tokens if not in file
-            if current_app_dict.get('llm', {}).get('params', {}).get('max_tokens') != self.app.llm.params.max_tokens: #type: ignore
-                self.app.llm.params.max_tokens = current_app_dict['llm']['params']['max_tokens'] #type: ignore
+            # Generic merge for all optional sections (preserves in-memory changes if missing from disk)
+            optional_sections = ['experiments', 'llm', 'fetchers', 'ai_search', 'storage', 'form_recognizer', 'other', 'secrets_mapping']  # Added secrets_mapping for consistency
+            for section in optional_sections:
+                self._merge_section(current_app_dict, self.app, section)
             
-            # Get the secrets mapping from the app config
-            if not hasattr(self.app, "secrets_mapping"):
-                logging.warning("AppConfig missing 'secrets_mapping' attribute")
-                self.app.secrets_mapping = {}  # type: ignore
+            # Example: Deep merge for specific nested fields (customize as needed; this preserves max_tokens if changed in memory)
+            if self.app.llm and 'llm' in current_app_dict and current_app_dict['llm'].get('params', {}).get('max_tokens') != self.app.llm.params.max_tokens:  # type: ignore
+                self.app.llm.params.max_tokens = current_app_dict['llm']['params']['max_tokens']  # type: ignore
+            
+            # Set secrets_mapping from the merged app (ensures consistency post-merge)
+            if not hasattr(self.app, "secrets_mapping") or self.app.secrets_mapping is None:
+                logging.warning("AppConfig missing 'secrets_mapping' attribute; skipping secret injection")
+                self.secrets_mapping = None
             else:
                 self.secrets_mapping = self.app.secrets_mapping
             
-            # Reinject secrets after loading non-secrets to avoid overwrites
+            # Reinject secrets after merging and loading non-secrets
             self._inject_secrets()
             
             # Update the original raw config for future comparisons
             self._original_raw = raw
+            
+            # Light validation: Check if a key section loaded correctly (customize to your needs)
+            if not self.app.llm:  # Example: Ensure LLM (a common section) is present
+                logging.warning("Reloaded config missing 'llm' section; using in-memory fallback if available")
             
             logging.info("Configuration reloaded successfully")
             return True
@@ -327,6 +409,28 @@ if __name__ == "__main__":
     # Print only the form recognizer config
     if cfg.app.form_recognizer:
         print("=== Form Recognizer Config ===")
-        pprint.pprint(asdict(cfg.app.form_recognizer))
+        pprint.pprint(cfg.app.form_recognizer.model_dump())
     else:
         print("No Form Recognizer config found.")
+
+    # Demonstrate different ways to access experiments with autocomplete
+    print("\n=== Experiment Access Examples ===")
+    
+    # Method 1: Using the new get_experiment method (RECOMMENDED - has autocomplete!)
+    experiment = cfg.get_experiment("prompt_optimization")
+    if experiment:
+        print(f"Experiment enabled status: {experiment.enabled}")
+        experiment.enabled = True  # This will have autocomplete!
+        print(f"After setting: {experiment.enabled}")
+    
+    # Method 2: Using the experiments config directly (also has autocomplete)
+    if cfg.app.experiments:
+        exp = cfg.app.experiments["prompt_optimization"]  # This now has autocomplete too!
+        print(f"Direct access - enabled: {exp.enabled}")
+    
+    # Method 3: Safe access with get_experiment method
+    if cfg.app.experiments and "prompt_optimization" in cfg.app.experiments:
+        exp = cfg.app.experiments.get_experiment("prompt_optimization")
+        if exp:
+            print(f"Safe access - enabled: {exp.enabled}") 
+
