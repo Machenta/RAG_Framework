@@ -204,11 +204,13 @@ app:
 
 
   experiments:  # New optional section for A/B testing (dormant by default)
+    enabled: false  # Global flag to enable/disable all experiments
     experiments:
       prompt_optimization:  # Example experiment (keyed by name)
         name: "System Prompt Optimization"
         status: "inactive"  # Dormant; set to "active" to enable
         traffic_split: 0    # Dormant (no traffic); e.g., set to 50 for 50/50 split
+        enabled: false      # Individual experiment flag
         variants:
           control:
             name: "Original Prompt"

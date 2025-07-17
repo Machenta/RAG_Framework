@@ -268,11 +268,44 @@ class Experiment(BaseModel):
     enabled: bool = False
 
 class ExperimentsConfig(BaseModel):
+    enabled: bool = False  # Global flag to enable/disable all experiments
     experiments: Dict[str, Experiment] = Field(default_factory=dict)
     
     def get_experiment(self, name: str) -> Optional[Experiment]:
         """Get an experiment by name with proper type hints for autocomplete."""
         return self.experiments.get(name)
+    
+    def is_experiment_active(self, name: str) -> bool:
+        """
+        Check if a specific experiment is active.
+        
+        An experiment is active only if:
+        1. Global experiments are enabled (self.enabled = True)
+        2. The specific experiment exists
+        3. The specific experiment is enabled (experiment.enabled = True)
+        4. The specific experiment status is "active"
+        """
+        if not self.enabled:
+            return False
+        
+        experiment = self.get_experiment(name)
+        if not experiment:
+            return False
+            
+        return (
+            experiment.enabled and 
+            experiment.status.lower() == "active"
+        )
+    
+    def get_active_experiments(self) -> Dict[str, Experiment]:
+        """Get all currently active experiments."""
+        if not self.enabled:
+            return {}
+        
+        return {
+            name: exp for name, exp in self.experiments.items()
+            if exp.enabled and exp.status.lower() == "active"
+        }
     
     def __getitem__(self, name: str) -> Experiment:
         """Allow dictionary-style access with proper type hints."""

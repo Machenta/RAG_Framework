@@ -276,6 +276,43 @@ class Config(metaclass=SingletonMeta):
             return self.app.experiments.get_experiment(name)
         return None
 
+    def are_experiments_enabled(self) -> bool:
+        """Check if experiments are globally enabled."""
+        return (
+            self.app.experiments is not None and 
+            self.app.experiments.enabled
+        )
+    
+    def is_experiment_active(self, name: str) -> bool:
+        """
+        Check if a specific experiment is active and ready to run.
+        
+        An experiment is active only if:
+        1. Global experiments are enabled
+        2. The specific experiment exists
+        3. The specific experiment is enabled
+        4. The specific experiment status is "active"
+        """
+        if not self.app.experiments:
+            return False
+        return self.app.experiments.is_experiment_active(name)
+    
+    def get_active_experiments(self) -> Dict[str, Experiment]:
+        """Get all currently active experiments."""
+        if not self.app.experiments:
+            return {}
+        return self.app.experiments.get_active_experiments()
+    
+    def enable_experiments(self, enabled: bool = True):
+        """
+        Enable or disable all experiments globally.
+        
+        Args:
+            enabled: True to enable experiments, False to disable
+        """
+        if self.app.experiments:
+            self.app.experiments.enabled = enabled
+
     def is_production(self) -> bool:
         """Check if running in production environment."""
         if not self.app.other or not self.app.other.environment:
@@ -297,18 +334,24 @@ class Config(metaclass=SingletonMeta):
             "has_llm": self.app.llm is not None,
             "has_ai_search": self.app.ai_search is not None,
             "has_experiments": self.app.experiments is not None,
+            "experiments_enabled": self.are_experiments_enabled(),
             "has_storage": self.app.storage is not None,
             "secrets_configured": self.secrets_mapping is not None,
         }
         
         # Add experiment status (safe information)
         if self.app.experiments:
-            summary["experiments"] = {}
+            summary["experiments"] = {
+                "global_enabled": self.app.experiments.enabled,
+                "individual_experiments": {}
+            }
+            
             for exp_name, experiment in self.app.experiments.experiments.items():
-                summary["experiments"][exp_name] = {
+                summary["experiments"]["individual_experiments"][exp_name] = {
                     "enabled": experiment.enabled,
                     "status": experiment.status,
-                    "traffic_split": experiment.traffic_split
+                    "traffic_split": experiment.traffic_split,
+                    "is_active": self.is_experiment_active(exp_name)
                     # Note: variants and success_metrics excluded for brevity
                 }
         

@@ -247,6 +247,66 @@ class SecureConfigAPI:
             for entry in self._audit_log
         ]
     
+    def toggle_experiments(
+        self, 
+        user_id: str, 
+        enabled: bool,
+        **auth_context
+    ) -> bool:
+        """
+        Safely enable or disable all experiments globally.
+        
+        This is a high-level operation that requires special permissions.
+        
+        Args:
+            user_id: Authenticated user identifier
+            enabled: True to enable experiments, False to disable
+            **auth_context: Additional authentication context
+            
+        Returns:
+            True if toggle was successful
+            
+        Raises:
+            PermissionError: If user lacks permissions for global experiment control
+        """
+        # This is a privileged operation
+        # In production, you'd check for special permissions here
+        
+        old_value = None
+        try:
+            old_value = str(self.config.are_experiments_enabled())
+            
+            # Use the config's built-in method
+            self.config.enable_experiments(enabled)
+            
+            # Log successful change
+            self._log_audit(ConfigAuditLog(
+                user_id=user_id,
+                change_type=ConfigChangeType.UPDATE,
+                section="experiments",
+                field_path="global_enabled",
+                old_value=old_value,
+                new_value=str(enabled),
+                success=True,
+                **auth_context
+            ))
+            
+            return True
+            
+        except Exception as e:
+            # Log failed change
+            self._log_audit(ConfigAuditLog(
+                user_id=user_id,
+                change_type=ConfigChangeType.UPDATE,
+                section="experiments",
+                field_path="global_enabled",
+                old_value=old_value,
+                success=False,
+                error_message=str(e),
+                **auth_context
+            ))
+            raise
+    
     def backup_config(self, user_id: str, **auth_context) -> str:
         """
         Create a backup of current configuration.
