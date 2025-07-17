@@ -282,9 +282,55 @@ class ExperimentsConfig(BaseModel):
         """Allow 'name in experiments' syntax."""
         return name in self.experiments
 
+
+class APIContactConfig(BaseModel):
+    """API contact information"""
+    name: Optional[str] = None
+    email: Optional[str] = None
+    url: Optional[str] = None
+
+
+class APILicenseConfig(BaseModel):
+    """API license information"""
+    name: Optional[str] = None
+    url: Optional[str] = None
+
+
+class APIServerConfig(BaseModel):
+    """API server configuration"""
+    url: str
+    description: Optional[str] = None
+    variables: Optional[Dict[str, Any]] = None
+
+
+class APIConfig(BaseModel):
+    """API housekeeping configuration for FastAPI"""
+    version: Optional[str] = "1.0.0"
+    description: Optional[str] = "RAG Service API for enhanced AI responses"
+    contact: Optional[APIContactConfig] = None
+    license: Optional[APILicenseConfig] = None
+    terms_of_service: Optional[str] = None
+    servers: Optional[List[APIServerConfig]] = None
+    
+    # FastAPI-specific settings
+    docs_url: Optional[str] = "/api/docs"
+    openapi_url: Optional[str] = "/api/openapi.json"
+    redoc_url: Optional[str] = "/api/redoc"
+    
+    # API routing settings
+    prefix: Optional[str] = "/api"
+    enabled_endpoints: Optional[List[str]] = Field(default_factory=lambda: ["rag", "chat", "health"])
+    
+    # Template and static file settings
+    templates_dir: Optional[str] = "templates"
+    static_dir: Optional[str] = None
+    static_url: Optional[str] = None
+
+
 class AppConfig(BaseModel):
     name: str = "DefaultApp"
     deployment: Optional[str] = None
+    api: Optional[APIConfig] = None
     fetchers: Optional[FetchersConfig] = None
     llm: Optional[LLMConfig] = None
     ai_search: Optional[AiSearchConfig] = None

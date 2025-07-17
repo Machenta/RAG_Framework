@@ -341,7 +341,7 @@ class Config(metaclass=SingletonMeta):
             self.app = AppConfig.model_validate(raw.get("app", {}))
             
             # Generic merge for all optional sections (preserves in-memory changes if missing from disk)
-            optional_sections = ['experiments', 'llm', 'fetchers', 'ai_search', 'storage', 'form_recognizer', 'other', 'secrets_mapping']  # Added secrets_mapping for consistency
+            optional_sections = ['api', 'experiments', 'llm', 'fetchers', 'ai_search', 'storage', 'form_recognizer', 'other', 'secrets_mapping']
             for section in optional_sections:
                 self._merge_section(current_app_dict, self.app, section)
             
