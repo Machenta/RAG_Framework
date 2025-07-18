@@ -338,6 +338,8 @@ class APIServerConfig(BaseModel):
 
 class APIConfig(BaseModel):
     """API housekeeping configuration for FastAPI"""
+    # Basic API metadata
+    title: Optional[str] = "RAG Service"
     version: Optional[str] = "1.0.0"
     description: Optional[str] = "RAG Service API for enhanced AI responses"
     contact: Optional[APIContactConfig] = None
@@ -345,7 +347,7 @@ class APIConfig(BaseModel):
     terms_of_service: Optional[str] = None
     servers: Optional[List[APIServerConfig]] = None
     
-    # FastAPI-specific settings
+    # FastAPI-specific documentation settings
     docs_url: Optional[str] = "/api/docs"
     openapi_url: Optional[str] = "/api/openapi.json"
     redoc_url: Optional[str] = "/api/redoc"
@@ -358,6 +360,27 @@ class APIConfig(BaseModel):
     templates_dir: Optional[str] = "templates"
     static_dir: Optional[str] = None
     static_url: Optional[str] = None
+    
+    # Additional FastAPI configuration
+    debug: Optional[bool] = None  # Can override app-level debug setting
+    host: Optional[str] = "0.0.0.0"
+    port: Optional[int] = 8000
+    reload: Optional[bool] = None  # Auto-reload for development
+    workers: Optional[int] = 1  # Number of worker processes
+    
+    # Security settings
+    cors_enabled: Optional[bool] = True
+    cors_origins: Optional[List[str]] = Field(default_factory=lambda: ["*"])
+    cors_methods: Optional[List[str]] = Field(default_factory=lambda: ["GET", "POST"])
+    cors_headers: Optional[List[str]] = Field(default_factory=lambda: ["*"])
+    
+    # Request/response settings
+    max_request_size: Optional[int] = 16 * 1024 * 1024  # 16MB default
+    timeout: Optional[int] = 30  # Request timeout in seconds
+    
+    # Logging and monitoring
+    access_log: Optional[bool] = True
+    log_level: Optional[str] = None  # Can override app-level log setting
 
 
 class AppConfig(BaseModel):

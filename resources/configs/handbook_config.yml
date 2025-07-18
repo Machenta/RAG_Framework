@@ -227,8 +227,12 @@ app:
 
   # API Configuration for housekeeping
   api:
+    # Basic API metadata
+    title: "RAG Service"
     version: "1.0.0"
     description: "RAG Service API for Missouri School Board Handbook"
+    
+    # Contact and legal information
     contact:
       name: "API Support"
       email: "support@example.com"
@@ -236,11 +240,55 @@ app:
       name: "MIT"
       url: "https://opensource.org/licenses/MIT"
     terms_of_service: "https://example.com/terms"
+    
+    # Server configurations
     servers:
       - url: "http://127.0.0.1:8000"
         description: "Development server"
       - url: "https://api.example.com"
         description: "Production server"
+    
+    # FastAPI documentation settings
+    docs_url: "/api/docs"
+    openapi_url: "/api/openapi.json"
+    redoc_url: "/api/redoc"
+    
+    # API routing settings
+    prefix: "/api"
+    enabled_endpoints:
+      - "rag"
+      - "chat"
+      - "health"
+      - "experiments"  # For experiment management
+    
+    # Server settings
+    host: "0.0.0.0"
+    port: 8000
+    workers: 1
+    
+    # Security settings
+    cors_enabled: true
+    cors_origins:
+      - "http://localhost:3000"  # React dev server
+      - "http://127.0.0.1:3000"
+      - "https://yourdomain.com"  # Production frontend
+    cors_methods:
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "DELETE"
+    cors_headers:
+      - "Content-Type"
+      - "Authorization"
+      - "X-API-Key"
+    
+    # Request/response settings
+    max_request_size: 16777216  # 16MB in bytes
+    timeout: 30
+    
+    # Logging and monitoring
+    access_log: true
+    # log_level inherited from app.other.log_level if not specified
 
   other:
     debug: true
