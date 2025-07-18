@@ -357,9 +357,9 @@ class APIConfig(BaseModel):
     enabled_endpoints: Optional[List[str]] = Field(default_factory=lambda: ["rag", "chat", "health"])
     
     # Template and static file settings
-    templates_dir: Optional[str] = "templates"
-    static_dir: Optional[str] = None
-    static_url: Optional[str] = None
+    templates_dir: Optional[str] = Field(default="templates", description="Directory for Jinja2 templates")
+    static_dir: Optional[str] = Field(default=None, description="Directory for static files")
+    static_url: Optional[str] = Field(default=None, description="URL prefix for static files")
     
     # Additional FastAPI configuration
     debug: Optional[bool] = None  # Can override app-level debug setting

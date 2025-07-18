@@ -290,6 +290,11 @@ app:
     access_log: true
     # log_level inherited from app.other.log_level if not specified
 
+    # Template and static file settings
+    templates_dir: "rag_api_core/templates"
+    static_dir: null
+    static_url: null
+
   other:
     debug: true
     log_level: INFO
