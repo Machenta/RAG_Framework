@@ -382,6 +382,14 @@ class APIConfig(BaseModel):
     access_log: Optional[bool] = True
     log_level: Optional[str] = None  # Can override app-level log setting
 
+    # Features block (for feature toggles)
+    features: Optional["FeaturesConfig"] = None
+
+
+class FeaturesConfig(BaseModel):
+    feedback_collection_enabled: bool = False
+    ab_testing_enabled: bool = False
+    custom_metrics_enabled: bool = False
 
 class AppConfig(BaseModel):
     name: str = "DefaultApp"

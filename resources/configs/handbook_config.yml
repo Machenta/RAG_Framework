@@ -295,6 +295,12 @@ app:
     static_dir: null
     static_url: null
 
+    # Features block (feature toggles)
+    features:
+      feedback_collection_enabled: true
+      ab_testing_enabled: false
+      custom_metrics_enabled: true
+
   other:
     debug: true
     log_level: INFO
