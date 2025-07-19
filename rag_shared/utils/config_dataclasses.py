@@ -37,6 +37,11 @@ class RestAPIFetcherConfig(BaseModel):
 class AzureSearchFetcherConfig(BaseModel):
     processor: Optional[str] = None
     params: Optional[AzureSearchParams] = None
+    # Fields to extract as metadata from search results
+    metadata_fields: Optional[List[str]] = Field(
+        default_factory=lambda: ["video_url", "timestamp", "filename"],
+        description="List of fields to extract as metadata from Azure Search results"
+    )
 
 
 
@@ -122,6 +127,11 @@ class AiSearchConfig(BaseModel):
     index:   IndexConfig 
     endpoint: str
     api_key: str = Field(default="", repr=False)          # secret
+    # Fields to extract as metadata from search results
+    metadata_fields: Optional[List[str]] = Field(
+        default_factory=lambda: ["video_url", "timestamp", "filename"],
+        description="List of fields to extract as metadata from search results"
+    )
 
 class FormRecognizerConfig(BaseModel):
     endpoint:     str

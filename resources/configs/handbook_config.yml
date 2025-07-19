@@ -11,6 +11,10 @@ app:
 
     AzureSearchFetcher:
       processor: noop
+      metadata_fields:
+        - "video_url"
+        - "timestamp"
+        - "filename"
       params:
         query: ""                       
         filter: ""                      
