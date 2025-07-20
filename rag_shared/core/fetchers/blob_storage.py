@@ -75,8 +75,7 @@ class BlobStorageFetcher(DataFetcher):
             Tuple of (container_name, blob_name)
         """
         if not self.blob_config.file_mappings:
-            # Fallback to configured container and simple path
-            return self.blob_config.container_name, filename
+            raise ValueError("File mappings configuration is required to determine container.")
             
         # Get the full container path (includes base container + file type directory)
         container_path = self.blob_config.file_mappings.get_container_path(
@@ -137,7 +136,9 @@ class BlobStorageFetcher(DataFetcher):
         # Determine container and blob name
         if blob_name:
             # Direct blob name provided
-            container_name = kwargs.get("container_name") or self.blob_config.container_name
+            container_name = kwargs.get("container_name")
+            if not container_name:
+                raise ValueError("container_name must be provided when using blob_name directly, since there is no default container.")
             final_blob_name = blob_name
         elif prompt_type and filename:
             # Prompt file - use prompts storage configuration
@@ -205,7 +206,7 @@ class BlobStorageFetcher(DataFetcher):
         
         # Get container and base path for prompt type
         prompts_config = self.blob_config.prompts_storage
-        container_name = prompts_config.container_name or self.blob_config.container_name
+        container_name = prompts_config.container_name
         
         directories = prompts_config.directories or {}
         if prompt_type not in directories:

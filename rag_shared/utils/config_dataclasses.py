@@ -211,7 +211,6 @@ class PromptsStorageConfig(BaseModel):
 
 class BlobStorageConfig(BaseModel):
     account_name: str
-    container_name: str
     use_managed_identity: bool = True  # Always use managed identity
     endpoint_suffix: Optional[str] = "core.windows.net"
     prompts_storage: Optional[PromptsStorageConfig] = None  # Nested prompts config
