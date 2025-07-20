@@ -11,6 +11,10 @@ app:
 
     AzureSearchFetcher:
       processor: noop
+      metadata_fields:
+        - "video_url"
+        - "timestamp"
+        - "filename"
       params:
         query: ""                       
         filter: ""                      
@@ -50,11 +54,20 @@ app:
     api_base_url: https://nunot-masez9tz-eastus2.cognitiveservices.azure.com/
 
     prompts:
-      folder:   recovered_space
-      system:   system_prompt.j2
-      defaults:
-        - chat_prompt.j2             # you can list more files here
-        # - another_prompt.j2
+      # Source can be 'filesystem' or 'blob_storage'
+      source: "blob_storage"
+      # For blob storage prompts (paths resolved from storage.prompts_storage.directories)
+      blob_config:
+        system_prompt: "default_system_prompt.j2"  # Will be loaded from system_prompts directory
+        response_templates:
+          - "chat_response.j2"      # Will be loaded from response_templates directory
+          - "rag_response.j2"       # Will be loaded from response_templates directory
+      # Fallback for filesystem (deprecated)
+      filesystem_config:
+        folder: "recovered_space"
+        system: "system_prompt.j2"
+        defaults:
+          - "chat_prompt.j2"
 
     params:
       max_tokens:              200
@@ -108,7 +121,8 @@ app:
     AzureSearchAPIKey:      ["ai_search", "api_key"]
     AzureSearchEmbeddingAPIKey: ["ai_search", "index", "embedding", "api_key"]
     OpenAIAPIKey:           ["llm", "api_key"]
-    FormRecognizerAPIKey:         ['form_recognizer','api_key']
+    FormRecognizerAPIKey:   ["form_recognizer", "api_key"]
+    # Note: Blob storage uses system-assigned managed identity, no keys needed
   
   # Storage configuration for various Azure Storage services
   storage:
@@ -120,10 +134,17 @@ app:
     # Blob Storage configuration
     blob_storage:
       account_name: "mystorageaccount"
-      container_name: "documents"
-      use_managed_identity: true  # Recommended for production
-      endpoint_suffix: "core.windows.net"  # Use "core.chinacloudapi.cn" for Azure China
-      # account_key and connection_string will be injected from Key Vault
+      use_managed_identity: true  # System-assigned managed identity
+      endpoint_suffix: "core.windows.net"
+
+      # Blob storage for prompts
+      prompts_storage:
+        container_name: "prompts"
+      # Directory structure for prompts
+        directories:
+          system_prompts: "system_prompts"
+          response_templates: "response_templates"
+          experiments: "experiments"  # For A/B testing different prompts
 
       file_mappings:
         base_container: "conversionfiles"
@@ -227,8 +248,12 @@ app:
 
   # API Configuration for housekeeping
   api:
+    # Basic API metadata
+    title: "RAG Service"
     version: "1.0.0"
     description: "RAG Service API for Missouri School Board Handbook"
+    
+    # Contact and legal information
     contact:
       name: "API Support"
       email: "support@example.com"
@@ -236,11 +261,66 @@ app:
       name: "MIT"
       url: "https://opensource.org/licenses/MIT"
     terms_of_service: "https://example.com/terms"
+    
+    # Server configurations
     servers:
       - url: "http://127.0.0.1:8000"
         description: "Development server"
       - url: "https://api.example.com"
         description: "Production server"
+    
+    # FastAPI documentation settings
+    docs_url: "/api/docs"
+    openapi_url: "/api/openapi.json"
+    redoc_url: "/api/redoc"
+    
+    # API routing settings
+    prefix: "/api"
+    enabled_endpoints:
+      - "rag"
+      - "chat"
+      - "health"
+      - "experiments"  # For experiment management
+    
+    # Server settings
+    host: "0.0.0.0"
+    port: 8000
+    workers: 1
+    
+    # Security settings
+    cors_enabled: true
+    cors_origins:
+      - "http://localhost:3000"  # React dev server
+      - "http://127.0.0.1:3000"
+      - "https://yourdomain.com"  # Production frontend
+    cors_methods:
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "DELETE"
+    cors_headers:
+      - "Content-Type"
+      - "Authorization"
+      - "X-API-Key"
+    
+    # Request/response settings
+    max_request_size: 16777216  # 16MB in bytes
+    timeout: 30
+    
+    # Logging and monitoring
+    access_log: true
+    # log_level inherited from app.other.log_level if not specified
+
+    # Template and static file settings
+    templates_dir: "rag_api_core/templates"
+    static_dir: null
+    static_url: null
+
+    # Features block (feature toggles)
+    features:
+      feedback_collection_enabled: true
+      ab_testing_enabled: false
+      custom_metrics_enabled: true
 
   other:
     debug: true

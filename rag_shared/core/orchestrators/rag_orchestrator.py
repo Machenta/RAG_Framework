@@ -100,15 +100,24 @@ class RagOrchestrator:
         response = await self.model.generate(messages=messages, **model_kwargs)
         print(f"[RagOrchestrator] Model response:\n{response}\n")
 
-        # 4 - Extract metadata from AzureSearchFetcher if present
+        # 4 - Extract metadata dynamically from AzureSearchFetcher using its own config
         metadata: List[Dict[str, Any]] = []
-        azure = gathered.get("AzureSearchFetcher", {})
-        for doc in azure.get("results", []):
-            metadata.append({
-                "video_url": doc.get("video_url"),
-                "timestamp": doc.get("timestamp"),
-                "filename":  doc.get("filename")
-            })
+        azure = gathered.get("AzureSearchFetcher", {}) or {}
+        # Get metadata fields from fetcher config
+        fields: List[str] = []
+        if (
+            self.config.app
+            and self.config.app.fetchers
+            and self.config.app.fetchers.AzureSearchFetcher
+            and self.config.app.fetchers.AzureSearchFetcher.metadata_fields
+        ):
+            fields = self.config.app.fetchers.AzureSearchFetcher.metadata_fields  # type: ignore
+        for doc in azure.get("results", []) or []:
+            meta: Dict[str, Any] = {}
+            for field in fields:
+                if field in doc:
+                    meta[field] = doc.get(field)
+            metadata.append(meta)
 
         # 5 - Build updated history
         new_history = []

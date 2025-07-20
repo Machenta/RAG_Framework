@@ -336,8 +336,26 @@ class Config(metaclass=SingletonMeta):
             "has_experiments": self.app.experiments is not None,
             "experiments_enabled": self.are_experiments_enabled(),
             "has_storage": self.app.storage is not None,
+            "has_api_config": self.app.api is not None,
             "secrets_configured": self.secrets_mapping is not None,
         }
+        
+        # Add API configuration summary (safe information)
+        if self.app.api:
+            summary["api"] = {
+                "title": self.app.api.title,
+                "version": self.app.api.version,
+                "description": self.app.api.description,
+                "docs_url": self.app.api.docs_url,
+                "openapi_url": self.app.api.openapi_url,
+                "redoc_url": self.app.api.redoc_url,
+                "prefix": self.app.api.prefix,
+                "enabled_endpoints": self.app.api.enabled_endpoints,
+                "host": self.app.api.host,
+                "port": self.app.api.port,
+                "cors_enabled": self.app.api.cors_enabled
+                # Note: Excluding sensitive settings like cors_origins for security
+            }
         
         # Add experiment status (safe information)
         if self.app.experiments:

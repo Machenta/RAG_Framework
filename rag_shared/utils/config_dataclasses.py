@@ -37,6 +37,11 @@ class RestAPIFetcherConfig(BaseModel):
 class AzureSearchFetcherConfig(BaseModel):
     processor: Optional[str] = None
     params: Optional[AzureSearchParams] = None
+    # Fields to extract as metadata from search results
+    metadata_fields: Optional[List[str]] = Field(
+        default_factory=lambda: ["video_url", "timestamp", "filename"],
+        description="List of fields to extract as metadata from Azure Search results"
+    )
 
 
 
@@ -46,11 +51,30 @@ class FetchersConfig(BaseModel):
 
 
 
+class PromptBlobConfig(BaseModel):
+    """Configuration for blob storage-based prompts"""
+    system_prompt: str  # Just the filename, directory comes from storage config
+    response_templates: List[str] = Field(default_factory=list)  # Just filenames
+    # Optional versioning support
+    version: Optional[str] = None
+
+class PromptFilesystemConfig(BaseModel):
+    """Configuration for filesystem-based prompts (legacy)"""
+    folder: Optional[str] = None          # e.g. "recovered_space"
+    system: Optional[str] = None          # e.g. "system_prompt.j2"
+    defaults: List[str] = Field(default_factory=list)
+
 class PromptConfig(BaseModel):
-    folder:   Optional[str]       = None          # e.g. "recovered_space"
-    system:   Optional[str]       = None          # e.g. "system_prompt.j2"
-    defaults: List[str]           = Field(default_factory=list)
-    # ↑ allow multiple user/assistant templates
+    source: str = "filesystem"  # "filesystem" or "blob_storage"
+    blob_config: Optional[PromptBlobConfig] = None
+    filesystem_config: Optional[PromptFilesystemConfig] = None
+    
+    # Validation to ensure proper config based on source
+    def model_post_init(self, __context):
+        if self.source == "blob_storage" and not self.blob_config:
+            raise ValueError("blob_config is required when source is 'blob_storage'")
+        elif self.source == "filesystem" and not self.filesystem_config:
+            raise ValueError("filesystem_config is required when source is 'filesystem'")
 
 # ───────────────────────────────────────────────
 # 2.  Generation / sampling parameters
@@ -122,6 +146,11 @@ class AiSearchConfig(BaseModel):
     index:   IndexConfig 
     endpoint: str
     api_key: str = Field(default="", repr=False)          # secret
+    # Fields to extract as metadata from search results
+    metadata_fields: Optional[List[str]] = Field(
+        default_factory=lambda: ["video_url", "timestamp", "filename"],
+        description="List of fields to extract as metadata from search results"
+    )
 
 class FormRecognizerConfig(BaseModel):
     endpoint:     str
@@ -171,13 +200,21 @@ class FileTypeMappingConfig(BaseModel):
         return f"{directory_path}/{filename}"
 
 
+class PromptsStorageConfig(BaseModel):
+    """Prompts storage configuration within blob storage"""
+    container_name: str = "prompts"
+    directories: Optional[Dict[str, str]] = Field(default_factory=lambda: {
+        "system_prompts": "system_prompts",
+        "response_templates": "response_templates",
+        "experiments": "experiments"
+    })
+
 class BlobStorageConfig(BaseModel):
     account_name: str
     container_name: str
-    account_key: Optional[str] = Field(default="", repr=False)
-    connection_string: Optional[str] = Field(default="", repr=False)
-    use_managed_identity: Optional[bool] = True
+    use_managed_identity: bool = True  # Always use managed identity
     endpoint_suffix: Optional[str] = "core.windows.net"
+    prompts_storage: Optional[PromptsStorageConfig] = None  # Nested prompts config
     file_mappings: Optional[FileTypeMappingConfig] = Field(default_factory=FileTypeMappingConfig)
 
 
@@ -185,27 +222,21 @@ class FileShareConfig(BaseModel):
     account_name: str
     share_name: str
     directory_path: Optional[str] = None
-    account_key: Optional[str] = Field(default="", repr=False)
-    connection_string: Optional[str] = Field(default="", repr=False)
-    use_managed_identity: Optional[bool] = True
+    use_managed_identity: bool = True  # Always use managed identity
     endpoint_suffix: Optional[str] = "core.windows.net"
 
 
 class TableStorageConfig(BaseModel):
     account_name: str
     table_name: str
-    account_key: Optional[str] = Field(default="", repr=False)
-    connection_string: Optional[str] = Field(default="", repr=False)
-    use_managed_identity: Optional[bool] = True
+    use_managed_identity: bool = True  # Always use managed identity
     endpoint_suffix: Optional[str] = "core.windows.net"
 
 
 class QueueStorageConfig(BaseModel):
     account_name: str
     queue_name: str
-    account_key: Optional[str] = Field(default="", repr=False)
-    connection_string: Optional[str] = Field(default="", repr=False)
-    use_managed_identity: Optional[bool] = True
+    use_managed_identity: bool = True  # Always use managed identity
     endpoint_suffix: Optional[str] = "core.windows.net"
 
 
@@ -232,14 +263,7 @@ class SecretsMapping(BaseModel):
     AzureSearchEmbeddingAPIKey: List[str]
     OpenAIAPIKey:               List[str]
     FormRecognizerAPIKey:       List[str]
-    BlobStorageAccountKey:      Optional[List[str]] = None
-    BlobStorageConnectionString: Optional[List[str]] = None
-    FileShareAccountKey:        Optional[List[str]] = None
-    FileShareConnectionString:  Optional[List[str]] = None
-    TableStorageAccountKey:     Optional[List[str]] = None
-    TableStorageConnectionString: Optional[List[str]] = None
-    QueueStorageAccountKey:     Optional[List[str]] = None
-    QueueStorageConnectionString: Optional[List[str]] = None
+    # Note: Storage services use system-assigned managed identity, no secrets needed
 
 
 class KVSecrets(BaseModel):
@@ -338,6 +362,8 @@ class APIServerConfig(BaseModel):
 
 class APIConfig(BaseModel):
     """API housekeeping configuration for FastAPI"""
+    # Basic API metadata
+    title: Optional[str] = "RAG Service"
     version: Optional[str] = "1.0.0"
     description: Optional[str] = "RAG Service API for enhanced AI responses"
     contact: Optional[APIContactConfig] = None
@@ -345,7 +371,7 @@ class APIConfig(BaseModel):
     terms_of_service: Optional[str] = None
     servers: Optional[List[APIServerConfig]] = None
     
-    # FastAPI-specific settings
+    # FastAPI-specific documentation settings
     docs_url: Optional[str] = "/api/docs"
     openapi_url: Optional[str] = "/api/openapi.json"
     redoc_url: Optional[str] = "/api/redoc"
@@ -355,10 +381,39 @@ class APIConfig(BaseModel):
     enabled_endpoints: Optional[List[str]] = Field(default_factory=lambda: ["rag", "chat", "health"])
     
     # Template and static file settings
-    templates_dir: Optional[str] = "templates"
-    static_dir: Optional[str] = None
-    static_url: Optional[str] = None
+    templates_dir: Optional[str] = Field(default="templates", description="Directory for Jinja2 templates")
+    static_dir: Optional[str] = Field(default=None, description="Directory for static files")
+    static_url: Optional[str] = Field(default=None, description="URL prefix for static files")
+    
+    # Additional FastAPI configuration
+    debug: Optional[bool] = None  # Can override app-level debug setting
+    host: Optional[str] = "0.0.0.0"
+    port: Optional[int] = 8000
+    reload: Optional[bool] = None  # Auto-reload for development
+    workers: Optional[int] = 1  # Number of worker processes
+    
+    # Security settings
+    cors_enabled: Optional[bool] = True
+    cors_origins: Optional[List[str]] = Field(default_factory=lambda: ["*"])
+    cors_methods: Optional[List[str]] = Field(default_factory=lambda: ["GET", "POST"])
+    cors_headers: Optional[List[str]] = Field(default_factory=lambda: ["*"])
+    
+    # Request/response settings
+    max_request_size: Optional[int] = 16 * 1024 * 1024  # 16MB default
+    timeout: Optional[int] = 30  # Request timeout in seconds
+    
+    # Logging and monitoring
+    access_log: Optional[bool] = True
+    log_level: Optional[str] = None  # Can override app-level log setting
 
+    # Features block (for feature toggles)
+    features: Optional["FeaturesConfig"] = None
+
+
+class FeaturesConfig(BaseModel):
+    feedback_collection_enabled: bool = False
+    ab_testing_enabled: bool = False
+    custom_metrics_enabled: bool = False
 
 class AppConfig(BaseModel):
     name: str = "DefaultApp"

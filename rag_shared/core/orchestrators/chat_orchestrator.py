@@ -102,7 +102,7 @@ if __name__ == "__main__":
                 "filter": "",
                 "top_k": 5,
                 "include_total_count": True,
-                "facets": ["speaker,count:5", "topic"],
+                "facets": ["speaker", "topic"],
                 "highlight_fields": ["text"],
                 "select_fields": [
                     "id","filename","block_id","chunk_index","part","speaker",
