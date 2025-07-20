@@ -2,9 +2,12 @@ import os
 import yaml
 import logging
 import copy
+import asyncio
 from typing import Optional, Dict, Any, Type, TypeVar, cast
 from azure.identity import DefaultAzureCredential
+from azure.identity.aio import DefaultAzureCredential as AsyncDefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
+from azure.storage.blob.aio import BlobServiceClient
 
 from rag_shared.utils.config_dataclasses import (
     AppConfig, ExperimentsConfig, LLMConfig, FetchersConfig,
@@ -84,8 +87,15 @@ class Config(metaclass=SingletonMeta):
 
     Args:
         key_vault_name:  Azure Key Vault name (no https://, just the name)
-        config_folder:   sub‑package under ``rag_shared.resources`` (e.g. "configs")
+        config_folder:   sub‑package under ``rag_shared.resources`` (e.g. "configs") - fallback only
         config_filename: YAML file inside that folder (e.g. "app_config.yml")
+    
+    Environment Variables for Config Source:
+        CONFIG_SOURCE: "blob_storage" or "filesystem" (default: "filesystem")
+        CONFIG_STORAGE_ACCOUNT: Storage account name (required if CONFIG_SOURCE=blob_storage)
+        CONFIG_CONTAINER: Container name (default: "configs")
+        CONFIG_DIRECTORY: Directory within container (optional, can be empty)
+        CONFIG_FILENAME: Config filename (default: from config_filename parameter)
     """
     def __init__(
         self,
@@ -97,15 +107,9 @@ class Config(metaclass=SingletonMeta):
         self.key_vault_name = key_vault_name
         self.config_folder  = config_folder
         self.config_filename= config_filename
-        self._config_path = os.path.join(self.config_folder, self.config_filename)
 
-        # --- load YAML config from filesystem ---
-        if not os.path.exists(self._config_path):
-            raise FileNotFoundError(
-                f"Configuration file not found: '{self._config_path}'"
-            )
-        with open(self._config_path, 'r', encoding='utf-8') as f:
-            raw = yaml.safe_load(f) or {}
+        # --- load YAML config from source (blob storage or filesystem) ---
+        raw = asyncio.run(self._load_config_from_source())
 
         # Map into the AppConfig Pydantic model
         self.app: AppConfig = AppConfig.model_validate(raw.get("app", {}))
@@ -135,6 +139,74 @@ class Config(metaclass=SingletonMeta):
         
         # Store the original raw config for comparison when saving
         self._original_raw = raw
+
+    async def _load_config_from_source(self) -> Dict[str, Any]:
+        """Load configuration from blob storage or filesystem based on environment variables."""
+        config_source = os.getenv("CONFIG_SOURCE", "filesystem").lower()
+        
+        if config_source == "blob_storage":
+            return await self._load_config_from_blob()
+        else:
+            return self._load_config_from_filesystem()
+    
+    def _load_config_from_filesystem(self) -> Dict[str, Any]:
+        """Load configuration from local filesystem (fallback method)."""
+        self._config_path = os.path.join(self.config_folder, self.config_filename)
+        
+        if not os.path.exists(self._config_path):
+            raise FileNotFoundError(
+                f"Configuration file not found: '{self._config_path}'"
+            )
+        
+        with open(self._config_path, 'r', encoding='utf-8') as f:
+            raw = yaml.safe_load(f) or {}
+        
+        logging.info(f"Loaded configuration from filesystem: {self._config_path}")
+        return raw
+    
+    async def _load_config_from_blob(self) -> Dict[str, Any]:
+        """Load configuration from Azure Blob Storage."""
+        storage_account = os.getenv("CONFIG_STORAGE_ACCOUNT")
+        if not storage_account:
+            raise ValueError("CONFIG_STORAGE_ACCOUNT environment variable is required when CONFIG_SOURCE=blob_storage")
+        
+        container_name = os.getenv("CONFIG_CONTAINER", "configs")
+        directory = os.getenv("CONFIG_DIRECTORY", "")
+        filename = os.getenv("CONFIG_FILENAME", self.config_filename)
+        
+        # Construct blob path
+        if directory:
+            blob_name = f"{directory}/{filename}"
+        else:
+            blob_name = filename
+        
+        # Set up blob client
+        credential = AsyncDefaultAzureCredential()
+        account_url = f"https://{storage_account}.blob.core.windows.net"
+        
+        async with BlobServiceClient(account_url=account_url, credential=credential) as client:
+            blob_client = client.get_blob_client(container=container_name, blob=blob_name)
+            
+            try:
+                # Download blob content
+                download_stream = await blob_client.download_blob()
+                content = await download_stream.readall()
+                config_text = content.decode('utf-8')
+                
+                # Parse YAML
+                raw = yaml.safe_load(config_text) or {}
+                
+                logging.info(f"Loaded configuration from blob storage: {storage_account}/{container_name}/{blob_name}")
+                
+                # Set fallback path for save operations
+                self._config_path = os.path.join(self.config_folder, filename)
+                
+                return raw
+                
+            except Exception as e:
+                logging.warning(f"Failed to load config from blob storage ({storage_account}/{container_name}/{blob_name}): {e}")
+                logging.info("Falling back to filesystem configuration...")
+                return self._load_config_from_filesystem()
 
 
     def _get_secret(self, name: str) -> str:
@@ -439,59 +511,46 @@ class Config(metaclass=SingletonMeta):
 
 
 if __name__ == "__main__":
-    import pprint
 
-    # 1) Instantiate your Config
-    cfg = Config(
-        key_vault_name="RecoveredSpacesKV",
-        config_folder="resources/configs",
-        config_filename="handbook_config.yml"
-    )
+    if False:
+        print("\n=== Filesystem Config Test ===")
+        SingletonMeta._instances.clear()
+        os.environ.pop("CONFIG_SOURCE", None)
+        os.environ.pop("CONFIG_STORAGE_ACCOUNT", None)
+        try:
+            cfg_fs = Config(
+                key_vault_name="RecoveredSpacesKV",
+                config_folder="resources/configs",
+                config_filename="handbook_config.yml"
+            )
+            print(f"✓ Filesystem config loaded: {cfg_fs.app.name}")
+        except Exception as e:
+            print(f"❌ Filesystem config failed: {e}")
 
-    # 2) Pull everything into a dict
-    full_cfg: Dict[str, Any] = cfg.to_dict()
 
-
-    # 3) Pretty-print in Python
-    print("=== Full Configuration ===")
-    pprint.pprint(full_cfg)
-    print()
-
-    # # 4) Also show as JSON if you like
-    # print("=== Configuration as JSON ===")
-    # print(json.dumps(full_cfg, indent=2))
-    # # ————————————————————————————————————————————————
-    # # Verify singleton behavior
-    # # ————————————————————————————————————————————————
-    config2 = Config(key_vault_name="RecoveredSpacesKV", config_filename="handbook_config.yml", config_folder="resources/configs")
-    assert cfg is config2, "Config should be a singleton!"
-    print("Singleton verified: config is the same instance on second call.")
-
-    # Print only the form recognizer config
-    if cfg.app.form_recognizer:
-        print("=== Form Recognizer Config ===")
-        pprint.pprint(cfg.app.form_recognizer.model_dump())
     else:
-        print("No Form Recognizer config found.")
+        print("\n=== Blob Storage Config Test ===")
+        SingletonMeta._instances.clear()
+        os.environ["CONFIG_SOURCE"] = "blob_storage"
+        os.environ["CONFIG_STORAGE_ACCOUNT"] = "ragrecoveredspacestorage"
+        os.environ["CONFIG_CONTAINER"] = "configs"
+        os.environ["CONFIG_DIRECTORY"] = "dev"
+        os.environ["CONFIG_FILENAME"] = "development_config.yml"
+        try:
+            cfg_blob = Config(
+                key_vault_name="RecoveredSpacesKV",
+                config_folder="resources/configs",
+                config_filename="development_config.yml"
+            )
+            print(f"✓ Blob storage config loaded: {cfg_blob.app.name}")
 
-    # Demonstrate different ways to access experiments with autocomplete
-    print("\n=== Experiment Access Examples ===")
-    
-    # Method 1: Using the new get_experiment method (RECOMMENDED - has autocomplete!)
-    experiment = cfg.get_experiment("prompt_optimization")
-    if experiment:
-        print(f"Experiment enabled status: {experiment.enabled}")
-        experiment.enabled = True  # This will have autocomplete!
-        print(f"After setting: {experiment.enabled}")
-    
-    # Method 2: Using the experiments config directly (also has autocomplete)
-    if cfg.app.experiments:
-        exp = cfg.app.experiments["prompt_optimization"]  # This now has autocomplete too!
-        print(f"Direct access - enabled: {exp.enabled}")
-    
-    # Method 3: Safe access with get_experiment method
-    if cfg.app.experiments and "prompt_optimization" in cfg.app.experiments:
-        exp = cfg.app.experiments.get_experiment("prompt_optimization")
-        if exp:
-            print(f"Safe access - enabled: {exp.enabled}") 
+            print(f"Config: {cfg_blob.to_dict()}")
+        except Exception as e:
+            print(f"❌ Blob storage config failed: {e}")
+
+        # Clean up environment variables
+        for env_var in ["CONFIG_SOURCE", "CONFIG_STORAGE_ACCOUNT", "CONFIG_CONTAINER", "CONFIG_DIRECTORY", "CONFIG_FILENAME"]:
+            os.environ.pop(env_var, None)
+
+    print("\n=== Done ===")
 

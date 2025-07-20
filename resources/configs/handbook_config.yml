@@ -58,7 +58,8 @@ app:
       source: "blob_storage"
       # For blob storage prompts (paths resolved from storage.prompts_storage.directories)
       blob_config:
-        system_prompt: "default_system_prompt.j2"  # Will be loaded from system_prompts directory
+        system_prompts:
+          - "default_system_prompt.j2"  # Will be loaded from system_prompts directory
         response_templates:
           - "chat_response.j2"      # Will be loaded from response_templates directory
           - "rag_response.j2"       # Will be loaded from response_templates directory
