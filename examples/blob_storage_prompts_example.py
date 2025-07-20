@@ -118,7 +118,7 @@ async def main():
         else:
             blob_config = config.app.storage.blob_storage
             print(f"   Account name: {blob_config.account_name}")
-            print(f"   Default container: {blob_config.container_name}")
+            # No default container_name: containers defined per sub-config
             print(f"   Using managed identity: {blob_config.use_managed_identity}")
             
             if blob_config.prompts_storage:

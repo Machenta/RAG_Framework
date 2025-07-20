@@ -91,8 +91,9 @@ async def test_blob_storage_connection(config):
         fetcher = BlobStorageFetcher(config)
         
         # Test with a simple blob fetch (you may need to adjust blob_name)
+        # Use file mapping mode instead of direct blob_name (no default container)
         result = await fetcher.fetch(
-            blob_name="test.txt",  # Adjust this to a blob that exists in your storage
+            filename="test.txt",
             encoding="utf-8"
         )
         
@@ -155,7 +156,6 @@ async def test_storage_config_validation():
     # Test blob storage config
     blob_config = BlobStorageConfig(
         account_name="teststorage",
-        container_name="testcontainer",
         use_managed_identity=True
     )
     
