@@ -200,11 +200,21 @@ class FileTypeMappingConfig(BaseModel):
         return f"{directory_path}/{filename}"
 
 
+class PromptsStorageConfig(BaseModel):
+    """Prompts storage configuration within blob storage"""
+    container_name: str = "prompts"
+    directories: Optional[Dict[str, str]] = Field(default_factory=lambda: {
+        "system_prompts": "system_prompts",
+        "response_templates": "response_templates",
+        "experiments": "experiments"
+    })
+
 class BlobStorageConfig(BaseModel):
     account_name: str
     container_name: str
     use_managed_identity: bool = True  # Always use managed identity
     endpoint_suffix: Optional[str] = "core.windows.net"
+    prompts_storage: Optional[PromptsStorageConfig] = None  # Nested prompts config
     file_mappings: Optional[FileTypeMappingConfig] = Field(default_factory=FileTypeMappingConfig)
 
 
@@ -230,21 +240,8 @@ class QueueStorageConfig(BaseModel):
     endpoint_suffix: Optional[str] = "core.windows.net"
 
 
-class PromptsStorageConfig(BaseModel):
-    """Dedicated blob storage configuration for prompts"""
-    account_name: str
-    container_name: str = "prompts"
-    use_managed_identity: bool = True  # Always use managed identity
-    endpoint_suffix: Optional[str] = "core.windows.net"
-    directories: Optional[Dict[str, str]] = Field(default_factory=lambda: {
-        "system_prompts": "system_prompts",
-        "response_templates": "response_templates",
-        "experiments": "experiments"
-    })
-
 class StorageConfig(BaseModel):
     blob_storage: Optional[BlobStorageConfig] = None
-    prompts_storage: Optional[PromptsStorageConfig] = None  # Add prompts storage
     file_share: Optional[FileShareConfig] = None
     table_storage: Optional[TableStorageConfig] = None
     queue_storage: Optional[QueueStorageConfig] = None

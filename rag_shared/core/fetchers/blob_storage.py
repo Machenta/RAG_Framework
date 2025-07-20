@@ -1,10 +1,13 @@
 import asyncio
 import os
-from typing import Any, Dict, Optional
+import logging
+from typing import Any, Dict, Optional, List
 from azure.storage.blob.aio import BlobServiceClient
 from azure.identity.aio import DefaultAzureCredential
 from rag_shared.core.fetchers.base import DataFetcher
 from rag_shared.utils.config import Config
+
+logger = logging.getLogger(__name__)
 
 class BlobStorageFetcher(DataFetcher):
     """
@@ -30,15 +33,8 @@ class BlobStorageFetcher(DataFetcher):
                 credential = DefaultAzureCredential()
                 account_url = f"https://{self.blob_config.account_name}.blob.{self.blob_config.endpoint_suffix}"
                 self._client = BlobServiceClient(account_url=account_url, credential=credential)
-            elif self.blob_config.connection_string:
-                # Use connection string
-                self._client = BlobServiceClient.from_connection_string(self.blob_config.connection_string)
-            elif self.blob_config.account_key:
-                # Use account key
-                account_url = f"https://{self.blob_config.account_name}.blob.{self.blob_config.endpoint_suffix}"
-                self._client = BlobServiceClient(account_url=account_url, credential=self.blob_config.account_key)
             else:
-                raise ValueError("No valid authentication method configured for blob storage")
+                raise ValueError("Only managed identity authentication is supported for blob storage")
         
         return self._client
     
@@ -95,13 +91,36 @@ class BlobStorageFetcher(DataFetcher):
         
         return container_name, blob_name
     
+    def get_prompt_blob_path(self, prompt_type: str, filename: str) -> tuple[str, str]:
+        """
+        Get the container and blob path for a prompt file.
+        
+        Args:
+            prompt_type: Type of prompt ('system_prompts', 'response_templates', 'experiments')
+            filename: Prompt filename
+            
+        Returns:
+            Tuple of (container_name, blob_name)
+        """
+        if not self.blob_config.prompts_storage:
+            raise ValueError("Prompts storage configuration is not available")
+            
+        container_name = self.blob_config.prompts_storage.container_name
+        directories = self.blob_config.prompts_storage.directories or {}
+        
+        directory = directories.get(prompt_type, prompt_type)
+        blob_name = f"{directory}/{filename}"
+        
+        return container_name, blob_name
+    
     async def fetch(self, **kwargs) -> Dict[str, Any]:
         """
         Fetch blob content from Azure Blob Storage.
         
         Args:
             blob_name: Direct blob name to fetch, OR
-            filename: Filename to auto-map using file type mappings
+            filename: Filename to auto-map using file type mappings, OR
+            prompt_type: Type of prompt ('system_prompts', 'response_templates', 'experiments') with filename
             container_name: Optional override of container name
             subdirectory: Optional additional subdirectory (when using filename)
             encoding: Text encoding (default: utf-8)
@@ -111,6 +130,7 @@ class BlobStorageFetcher(DataFetcher):
         """
         blob_name = kwargs.get("blob_name")
         filename = kwargs.get("filename")
+        prompt_type = kwargs.get("prompt_type")
         subdirectory = kwargs.get("subdirectory", "")
         encoding = kwargs.get("encoding", "utf-8")
         
@@ -119,11 +139,14 @@ class BlobStorageFetcher(DataFetcher):
             # Direct blob name provided
             container_name = kwargs.get("container_name") or self.blob_config.container_name
             final_blob_name = blob_name
+        elif prompt_type and filename:
+            # Prompt file - use prompts storage configuration
+            container_name, final_blob_name = self.get_prompt_blob_path(prompt_type, filename)
         elif filename:
             # Use file mapping to determine paths
             container_name, final_blob_name = self.get_blob_path_for_file(filename, subdirectory)
         else:
-            raise ValueError("Either blob_name or filename must be provided")
+            raise ValueError("Either blob_name, or filename, or (prompt_type + filename) must be provided")
         
         client = await self._get_client()
         blob_client = client.get_blob_client(container=container_name, blob=final_blob_name)
@@ -166,6 +189,51 @@ class BlobStorageFetcher(DataFetcher):
                 "error": str(e),
                 "content": None
             }
+    
+    async def list_prompts(self, prompt_type: str) -> List[str]:
+        """
+        List all prompt files of a specific type.
+        
+        Args:
+            prompt_type: Type of prompt ('system_prompts', 'response_templates', 'experiments')
+            
+        Returns:
+            List of prompt filenames in the specified type directory
+        """
+        if not self.blob_config.prompts_storage:
+            return []
+        
+        # Get container and base path for prompt type
+        prompts_config = self.blob_config.prompts_storage
+        container_name = prompts_config.container_name or self.blob_config.container_name
+        
+        directories = prompts_config.directories or {}
+        if prompt_type not in directories:
+            return []
+        
+        prefix = directories[prompt_type]
+        if prefix and not prefix.endswith('/'):
+            prefix += '/'
+        
+        try:
+            # Get container client for the prompts container
+            client = await self._get_client()
+            prompts_container_client = client.get_container_client(container_name)
+            
+            blob_list = []
+            async for blob in prompts_container_client.list_blobs(name_starts_with=prefix):
+                # Extract filename from full path
+                blob_name = blob.name
+                if blob_name.startswith(prefix):
+                    filename = blob_name[len(prefix):]
+                    # Only return files, not subdirectories
+                    if filename and '/' not in filename:
+                        blob_list.append(filename)
+            
+            return sorted(blob_list)
+        except Exception as e:
+            logger.error(f"Error listing prompts of type {prompt_type}: {e}")
+            return []
     
     async def close(self):
         """Close the blob service client."""

@@ -134,21 +134,17 @@ app:
     # Blob Storage configuration
     blob_storage:
       account_name: "mystorageaccount"
-      container_name: "documents"
       use_managed_identity: true  # System-assigned managed identity
       endpoint_suffix: "core.windows.net"
 
-    # Dedicated blob storage for prompts
-    prompts_storage:
-      account_name: "mystorageaccount"
-      container_name: "prompts"
-      use_managed_identity: true  # System-assigned managed identity
-      endpoint_suffix: "core.windows.net"
+      # Blob storage for prompts
+      prompts_storage:
+        container_name: "prompts"
       # Directory structure for prompts
-      directories:
-        system_prompts: "system_prompts"
-        response_templates: "response_templates"
-        experiments: "experiments"  # For A/B testing different prompts
+        directories:
+          system_prompts: "system_prompts"
+          response_templates: "response_templates"
+          experiments: "experiments"  # For A/B testing different prompts
 
       file_mappings:
         base_container: "conversionfiles"
