@@ -51,11 +51,30 @@ class FetchersConfig(BaseModel):
 
 
 
+class PromptBlobConfig(BaseModel):
+    """Configuration for blob storage-based prompts"""
+    system_prompt: str  # Just the filename, directory comes from storage config
+    response_templates: List[str] = Field(default_factory=list)  # Just filenames
+    # Optional versioning support
+    version: Optional[str] = None
+
+class PromptFilesystemConfig(BaseModel):
+    """Configuration for filesystem-based prompts (legacy)"""
+    folder: Optional[str] = None          # e.g. "recovered_space"
+    system: Optional[str] = None          # e.g. "system_prompt.j2"
+    defaults: List[str] = Field(default_factory=list)
+
 class PromptConfig(BaseModel):
-    folder:   Optional[str]       = None          # e.g. "recovered_space"
-    system:   Optional[str]       = None          # e.g. "system_prompt.j2"
-    defaults: List[str]           = Field(default_factory=list)
-    # ↑ allow multiple user/assistant templates
+    source: str = "filesystem"  # "filesystem" or "blob_storage"
+    blob_config: Optional[PromptBlobConfig] = None
+    filesystem_config: Optional[PromptFilesystemConfig] = None
+    
+    # Validation to ensure proper config based on source
+    def model_post_init(self, __context):
+        if self.source == "blob_storage" and not self.blob_config:
+            raise ValueError("blob_config is required when source is 'blob_storage'")
+        elif self.source == "filesystem" and not self.filesystem_config:
+            raise ValueError("filesystem_config is required when source is 'filesystem'")
 
 # ───────────────────────────────────────────────
 # 2.  Generation / sampling parameters
@@ -184,9 +203,7 @@ class FileTypeMappingConfig(BaseModel):
 class BlobStorageConfig(BaseModel):
     account_name: str
     container_name: str
-    account_key: Optional[str] = Field(default="", repr=False)
-    connection_string: Optional[str] = Field(default="", repr=False)
-    use_managed_identity: Optional[bool] = True
+    use_managed_identity: bool = True  # Always use managed identity
     endpoint_suffix: Optional[str] = "core.windows.net"
     file_mappings: Optional[FileTypeMappingConfig] = Field(default_factory=FileTypeMappingConfig)
 
@@ -195,32 +212,39 @@ class FileShareConfig(BaseModel):
     account_name: str
     share_name: str
     directory_path: Optional[str] = None
-    account_key: Optional[str] = Field(default="", repr=False)
-    connection_string: Optional[str] = Field(default="", repr=False)
-    use_managed_identity: Optional[bool] = True
+    use_managed_identity: bool = True  # Always use managed identity
     endpoint_suffix: Optional[str] = "core.windows.net"
 
 
 class TableStorageConfig(BaseModel):
     account_name: str
     table_name: str
-    account_key: Optional[str] = Field(default="", repr=False)
-    connection_string: Optional[str] = Field(default="", repr=False)
-    use_managed_identity: Optional[bool] = True
+    use_managed_identity: bool = True  # Always use managed identity
     endpoint_suffix: Optional[str] = "core.windows.net"
 
 
 class QueueStorageConfig(BaseModel):
     account_name: str
     queue_name: str
-    account_key: Optional[str] = Field(default="", repr=False)
-    connection_string: Optional[str] = Field(default="", repr=False)
-    use_managed_identity: Optional[bool] = True
+    use_managed_identity: bool = True  # Always use managed identity
     endpoint_suffix: Optional[str] = "core.windows.net"
 
 
+class PromptsStorageConfig(BaseModel):
+    """Dedicated blob storage configuration for prompts"""
+    account_name: str
+    container_name: str = "prompts"
+    use_managed_identity: bool = True  # Always use managed identity
+    endpoint_suffix: Optional[str] = "core.windows.net"
+    directories: Optional[Dict[str, str]] = Field(default_factory=lambda: {
+        "system_prompts": "system_prompts",
+        "response_templates": "response_templates",
+        "experiments": "experiments"
+    })
+
 class StorageConfig(BaseModel):
     blob_storage: Optional[BlobStorageConfig] = None
+    prompts_storage: Optional[PromptsStorageConfig] = None  # Add prompts storage
     file_share: Optional[FileShareConfig] = None
     table_storage: Optional[TableStorageConfig] = None
     queue_storage: Optional[QueueStorageConfig] = None
@@ -242,14 +266,7 @@ class SecretsMapping(BaseModel):
     AzureSearchEmbeddingAPIKey: List[str]
     OpenAIAPIKey:               List[str]
     FormRecognizerAPIKey:       List[str]
-    BlobStorageAccountKey:      Optional[List[str]] = None
-    BlobStorageConnectionString: Optional[List[str]] = None
-    FileShareAccountKey:        Optional[List[str]] = None
-    FileShareConnectionString:  Optional[List[str]] = None
-    TableStorageAccountKey:     Optional[List[str]] = None
-    TableStorageConnectionString: Optional[List[str]] = None
-    QueueStorageAccountKey:     Optional[List[str]] = None
-    QueueStorageConnectionString: Optional[List[str]] = None
+    # Note: Storage services use system-assigned managed identity, no secrets needed
 
 
 class KVSecrets(BaseModel):

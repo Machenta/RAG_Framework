@@ -54,11 +54,20 @@ app:
     api_base_url: https://nunot-masez9tz-eastus2.cognitiveservices.azure.com/
 
     prompts:
-      folder:   recovered_space
-      system:   system_prompt.j2
-      defaults:
-        - chat_prompt.j2             # you can list more files here
-        # - another_prompt.j2
+      # Source can be 'filesystem' or 'blob_storage'
+      source: "blob_storage"
+      # For blob storage prompts (paths resolved from storage.prompts_storage.directories)
+      blob_config:
+        system_prompt: "default_system_prompt.j2"  # Will be loaded from system_prompts directory
+        response_templates:
+          - "chat_response.j2"      # Will be loaded from response_templates directory
+          - "rag_response.j2"       # Will be loaded from response_templates directory
+      # Fallback for filesystem (deprecated)
+      filesystem_config:
+        folder: "recovered_space"
+        system: "system_prompt.j2"
+        defaults:
+          - "chat_prompt.j2"
 
     params:
       max_tokens:              200
@@ -112,7 +121,8 @@ app:
     AzureSearchAPIKey:      ["ai_search", "api_key"]
     AzureSearchEmbeddingAPIKey: ["ai_search", "index", "embedding", "api_key"]
     OpenAIAPIKey:           ["llm", "api_key"]
-    FormRecognizerAPIKey:         ['form_recognizer','api_key']
+    FormRecognizerAPIKey:   ["form_recognizer", "api_key"]
+    # Note: Blob storage uses system-assigned managed identity, no keys needed
   
   # Storage configuration for various Azure Storage services
   storage:
@@ -125,9 +135,20 @@ app:
     blob_storage:
       account_name: "mystorageaccount"
       container_name: "documents"
-      use_managed_identity: true  # Recommended for production
-      endpoint_suffix: "core.windows.net"  # Use "core.chinacloudapi.cn" for Azure China
-      # account_key and connection_string will be injected from Key Vault
+      use_managed_identity: true  # System-assigned managed identity
+      endpoint_suffix: "core.windows.net"
+
+    # Dedicated blob storage for prompts
+    prompts_storage:
+      account_name: "mystorageaccount"
+      container_name: "prompts"
+      use_managed_identity: true  # System-assigned managed identity
+      endpoint_suffix: "core.windows.net"
+      # Directory structure for prompts
+      directories:
+        system_prompts: "system_prompts"
+        response_templates: "response_templates"
+        experiments: "experiments"  # For A/B testing different prompts
 
       file_mappings:
         base_container: "conversionfiles"
