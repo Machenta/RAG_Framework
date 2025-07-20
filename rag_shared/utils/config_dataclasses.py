@@ -53,8 +53,15 @@ class FetchersConfig(BaseModel):
 
 class PromptBlobConfig(BaseModel):
     """Configuration for blob storage-based prompts"""
-    system_prompt: str  # Just the filename, directory comes from storage config
-    response_templates: List[str] = Field(default_factory=list)  # Just filenames
+    # List of system prompt filenames; directory comes from storage config
+    system_prompts: List[str] = Field(
+        default_factory=list,
+        description="List of system prompt filenames"
+    )
+    response_templates: List[str] = Field(
+        default_factory=list,
+        description="List of response template filenames"
+    )
     # Optional versioning support
     version: Optional[str] = None
 
