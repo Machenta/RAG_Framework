@@ -109,7 +109,7 @@ class Config(metaclass=SingletonMeta):
         self.config_filename= config_filename
 
         # --- load YAML config from source (blob storage or filesystem) ---
-        raw = asyncio.run(self._load_config_from_source())
+        raw = self._load_config_sync()
 
         # Map into the AppConfig Pydantic model
         self.app: AppConfig = AppConfig.model_validate(raw.get("app", {}))
@@ -139,6 +139,36 @@ class Config(metaclass=SingletonMeta):
         
         # Store the original raw config for comparison when saving
         self._original_raw = raw
+
+    def _load_config_sync(self) -> Dict[str, Any]:
+        """Synchronous wrapper for config loading that handles event loop conflicts."""
+        config_source = os.getenv("CONFIG_SOURCE", "filesystem").lower()
+        
+        if config_source == "blob_storage":
+            try:
+                # Try to get existing event loop
+                loop = asyncio.get_running_loop()
+                # If we're in an existing event loop, we need to handle this differently
+                import concurrent.futures
+                import threading
+                
+                def run_async():
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+                    try:
+                        return new_loop.run_until_complete(self._load_config_from_blob())
+                    finally:
+                        new_loop.close()
+                
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(run_async)
+                    return future.result()
+                    
+            except RuntimeError:
+                # No event loop running, safe to use asyncio.run()
+                return asyncio.run(self._load_config_from_blob())
+        else:
+            return self._load_config_from_filesystem()
 
     async def _load_config_from_source(self) -> Dict[str, Any]:
         """Load configuration from blob storage or filesystem based on environment variables."""
@@ -184,29 +214,34 @@ class Config(metaclass=SingletonMeta):
         credential = AsyncDefaultAzureCredential()
         account_url = f"https://{storage_account}.blob.core.windows.net"
         
-        async with BlobServiceClient(account_url=account_url, credential=credential) as client:
-            blob_client = client.get_blob_client(container=container_name, blob=blob_name)
-            
-            try:
-                # Download blob content
-                download_stream = await blob_client.download_blob()
-                content = await download_stream.readall()
-                config_text = content.decode('utf-8')
+        try:
+            async with BlobServiceClient(account_url=account_url, credential=credential) as client:
+                blob_client = client.get_blob_client(container=container_name, blob=blob_name)
                 
-                # Parse YAML
-                raw = yaml.safe_load(config_text) or {}
-                
-                logging.info(f"Loaded configuration from blob storage: {storage_account}/{container_name}/{blob_name}")
-                
-                # Set fallback path for save operations
-                self._config_path = os.path.join(self.config_folder, filename)
-                
-                return raw
-                
-            except Exception as e:
-                logging.warning(f"Failed to load config from blob storage ({storage_account}/{container_name}/{blob_name}): {e}")
-                logging.info("Falling back to filesystem configuration...")
-                return self._load_config_from_filesystem()
+                try:
+                    # Download blob content
+                    download_stream = await blob_client.download_blob()
+                    content = await download_stream.readall()
+                    config_text = content.decode('utf-8')
+                    
+                    # Parse YAML
+                    raw = yaml.safe_load(config_text) or {}
+                    
+                    logging.info(f"Loaded configuration from blob storage: {storage_account}/{container_name}/{blob_name}")
+                    
+                    # Set fallback path for save operations
+                    self._config_path = os.path.join(self.config_folder, filename)
+                    
+                    return raw
+                    
+                except Exception as e:
+                    logging.warning(f"Failed to load config from blob storage ({storage_account}/{container_name}/{blob_name}): {e}")
+                    logging.info("Falling back to filesystem configuration...")
+                    return self._load_config_from_filesystem()
+        finally:
+            # Ensure credential is closed
+            if hasattr(credential, 'close'):
+                await credential.close()
 
 
     def _get_secret(self, name: str) -> str:
