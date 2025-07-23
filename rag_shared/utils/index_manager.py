@@ -161,9 +161,14 @@ class IndexManager:
                 "key": f.get("key", False),
                 "searchable": f.get("searchable", False),
                 "filterable": f.get("filterable", False),
-                "retrievable": f.get("retrievable", True),
                 "sortable": f.get("sortable", False)
             }
+            
+            # Handle retrievable vs hidden attribute
+            if "retrievable" in f:
+                # Use 'hidden' attribute instead of 'retrievable' for newer SDK versions
+                kwargs["hidden"] = not f.get("retrievable", True)
+            
             if "vector" in f:
                 v = f["vector"]
                 kwargs.update({

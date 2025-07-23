@@ -103,6 +103,7 @@ class RagOrchestrator:
         # 4 - Extract metadata dynamically from AzureSearchFetcher using its own config
         metadata: List[Dict[str, Any]] = []
         azure = gathered.get("AzureSearchFetcher", {}) or {}
+        
         # Get metadata fields from fetcher config
         fields: List[str] = []
         if (
@@ -112,12 +113,63 @@ class RagOrchestrator:
             and self.config.app.fetchers.AzureSearchFetcher.metadata_fields
         ):
             fields = self.config.app.fetchers.AzureSearchFetcher.metadata_fields  # type: ignore
+        
+        print(f"[RagOrchestrator] Extracting metadata for fields: {fields}")
+        
         for doc in azure.get("results", []) or []:
             meta: Dict[str, Any] = {}
+            
+            # Extract configured metadata fields with fallbacks
             for field in fields:
                 if field in doc:
                     meta[field] = doc.get(field)
+                else:
+                    # Provide sensible fallbacks for missing fields
+                    if field == "filename":
+                        meta[field] = doc.get("source", doc.get("title", "Unknown Document"))
+                    elif field == "video_url":
+                        meta[field] = doc.get("url", doc.get("source_url", None))
+                    elif field == "timestamp":
+                        meta[field] = doc.get("time", doc.get("created_time", None))
+                    elif field == "chunk_index":
+                        meta[field] = doc.get("chunk", doc.get("block_id", 0))
+                    elif field == "speaker":
+                        meta[field] = doc.get("author", doc.get("presenter", "Unknown Speaker"))
+                    elif field == "topic":
+                        meta[field] = doc.get("category", doc.get("subject", "General"))
+                    elif field == "keyword":
+                        meta[field] = doc.get("keywords", doc.get("tags", None))
+                    elif field == "questionoranswer":
+                        meta[field] = doc.get("qa_type", doc.get("content_type", "content"))
+                    else:
+                        meta[field] = None
+            
+            # Always include search score if available
+            if "_score" in doc:
+                meta["_score"] = doc["_score"]
+            
+            # Format source citation for easy reference
+            source = meta.get("filename", "Unknown Document")
+            speaker = meta.get("speaker", "Unknown Speaker")
+            topic = meta.get("topic", "General Topic")
+            
+            # Create a meaningful citation based on available metadata
+            if meta.get("video_url"):
+                timestamp_info = f" at {meta.get('timestamp', 'unknown time')}" if meta.get('timestamp') else ""
+                meta["citation"] = f"{source} - {speaker} ({topic}){timestamp_info}"
+            else:
+                chunk_info = f" (Chunk {meta.get('chunk_index', 'unknown')})" if meta.get('chunk_index') is not None else ""
+                meta["citation"] = f"{source} - {speaker}{chunk_info}"
+            
+            # Add content preview for debugging
+            text_preview = doc.get("text", "")[:100] + "..." if len(doc.get("text", "")) > 100 else doc.get("text", "")
+            meta["content_preview"] = text_preview
+            
             metadata.append(meta)
+
+        print(f"[RagOrchestrator] Extracted {len(metadata)} metadata entries")
+        for i, meta in enumerate(metadata):
+            print(f"[RagOrchestrator] Metadata {i+1}: {meta.get('citation', 'No citation')}")
 
         # 5 - Build updated history
         new_history = []
@@ -188,8 +240,8 @@ if __name__ == "__main__":
             "facets": ["speaker,count:5", "topic"],
             "highlight_fields": ["text"],
             "select_fields": [
-                "id","filename","block_id","chunk_index","part","speaker",
-                "timestamp","tokens","video_url","keyword","topic","text"
+                "id", "filename", "video_url", "timestamp", "chunk_index", "speaker", 
+                "text", "topic", "keyword", "questionoranswer", "block_id", "part", "tokens"
             ],
             "vector_search": True
         }

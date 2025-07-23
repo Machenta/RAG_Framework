@@ -39,7 +39,7 @@ class AzureSearchFetcherConfig(BaseModel):
     params: Optional[AzureSearchParams] = None
     # Fields to extract as metadata from search results
     metadata_fields: Optional[List[str]] = Field(
-        default_factory=lambda: ["video_url", "timestamp", "filename"],
+        default_factory=lambda: ["filename", "video_url", "timestamp", "speaker", "topic", "keyword", "questionoranswer"],
         description="List of fields to extract as metadata from Azure Search results"
     )
 

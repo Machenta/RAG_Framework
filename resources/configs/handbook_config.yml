@@ -12,9 +12,15 @@ app:
     AzureSearchFetcher:
       processor: noop
       metadata_fields:
+        - "filename"
         - "video_url"
         - "timestamp"
-        - "filename"
+        - "chunk_index"
+        - "speaker"
+        - "topic"
+        - "keyword"
+        - "questionoranswer"
+        - "id"
       params:
         query: ""                       
         filter: ""                      
@@ -22,23 +28,27 @@ app:
         skip: 0
         include_total_count: true
         facets:
-          - "type,count:5"             # show top types (paragraph, table, vector‑drawing)
+          - "topic,count:5"             # show top topics 
+          - "speaker,count:5"           # show top speakers
+          - "questionoranswer,count:5"  # show content types
         highlight_fields:
           - "text"
         search_fields:
           - "text"                      # only search on our text field
         select_fields:
           - "id"
-          - "page_number"
           - "chunk_index"
-          - "type"
           - "text"
-          - "image_path"
-          - "source_pdf"
-          - "width"
-          - "height"
-          - "area"
-          - "procedureTitle"           # include the new procedure title field
+          - "filename"
+          - "video_url"
+          - "timestamp"
+          - "speaker"
+          - "topic"
+          - "keyword"
+          - "questionoranswer"
+          - "block_id"
+          - "part"
+          - "tokens"
         semantic: true                 # use semantic ranking
         semantic_config: "default-semantic"
         vector_search: true
@@ -88,11 +98,11 @@ app:
     api_key: ""           # <- pulled from Key Vault at runtime
 
     index:
-      name:            "pdf_index_1"
+      name:            "unified_text_index"
       skillset_name:   "chat-skillset"
       indexer_name:    "chat-indexer"
       indexes_path:    "resources/AI_search_indexes"
-      index_yml_path:  "pdf_index.yml"
+      index_yml_path:  "text_index.yml"
 
       vector_dim:       1536
       vector_field:     "contentVector"
@@ -100,7 +110,7 @@ app:
 
       semantic_content_fields:
         - "text"
-        - "source_pdf"
+        - "source_file"
       semantic_title_field: "text" 
 
       embedding:

@@ -1,0 +1,259 @@
+name: unified_text_index
+description: >
+  One index for all text-centric content (PDF/Word/Excel/CSV/JSON/transcripts, etc.)
+  with rich metadata for citation. Non-text assets (images/video frames) live elsewhere.
+
+fields:
+  # ─────────── Core identity & provenance ───────────
+  - name: id
+    type: String
+    key: true
+    searchable: false
+    filterable: false
+    retrievable: true
+    sortable: false
+
+  - name: source_file                 # e.g. Report.pdf, Meeting.vtt, Sheet1.xlsx
+    type: String
+    searchable: false
+    filterable: true
+    retrievable: true
+    sortable: false
+
+  - name: source_path                 # optional full path or blob URL
+    type: String
+    searchable: false
+    filterable: true
+    retrievable: true
+    sortable: false
+
+  - name: file_type                   # pdf | docx | xlsx | csv | json | transcript | ...
+    type: String
+    searchable: false
+    filterable: true
+    retrievable: true
+    sortable: false
+
+  - name: mime_type                   # application/pdf, text/csv, etc. (optional)
+    type: String
+    searchable: false
+    filterable: true
+    retrievable: true
+
+  - name: ingestion_timestamp         # when this chunk was indexed
+    type: DateTimeOffset
+    searchable: false
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  # ─────────── Location inside the source ───────────
+  - name: page_number                 # for paginated docs; null elsewhere
+    type: Int32
+    searchable: false
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  - name: sheet_name                  # Excel/CSV logical sheet or section
+    type: String
+    searchable: false
+    filterable: true
+    retrievable: true
+
+  - name: row_index                   # Excel/CSV row number (1-based)
+    type: Int32
+    searchable: false
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  - name: table_name                  # Excel table or detected table id (optional)
+    type: String
+    searchable: false
+    filterable: true
+    retrievable: true
+
+  - name: block_id                    # transcript block/group id
+    type: String
+    searchable: false
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  - name: chunk_index                 # within-page/section/transcript block
+    type: Int32
+    searchable: false
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  - name: char_start                  # optional start char offset in original text
+    type: Int32
+    searchable: false
+    filterable: false
+    retrievable: true
+
+  - name: char_end
+    type: Int32
+    searchable: false
+    filterable: false
+    retrievable: true
+
+  - name: timestamp                   # transcripts: seconds from start
+    type: Double
+    searchable: false
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  - name: duration_seconds            # length of segment (optional)
+    type: Double
+    searchable: false
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  # ─────────── Semantic/context metadata ───────────
+  - name: section_title               # nearest heading / question title / step title
+    type: String
+    searchable: true
+    filterable: false
+    retrievable: true
+
+  - name: subsection_title            # secondary heading (optional)
+    type: String
+    searchable: true
+    filterable: false
+    retrievable: true
+
+  - name: speaker                     # transcript speaker
+    type: String
+    searchable: false
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  - name: questionoranswer            # "question" | "answer" | etc.
+    type: String
+    searchable: false
+    filterable: true
+    retrievable: true
+    sortable: true
+
+  - name: topic                       # tags / topics if you enrich
+    type: String
+    searchable: true
+    filterable: true
+    retrievable: true
+    sortable: false
+    analyzer_name: standard.lucene
+
+  - name: keyword                     # additional keywords (multi-value via JSON array string)
+    type: String
+    searchable: true
+    filterable: true
+    retrievable: true
+    analyzer_name: standard.lucene
+
+  # ─────────── Content fields ───────────
+  - name: type                        # paragraph | table | code | transcript | ...
+    type: String
+    searchable: true
+    filterable: true
+    retrievable: true
+
+  - name: text                        # main searchable body
+    type: String
+    searchable: true
+    filterable: false
+    retrievable: true
+    analyzer_name: standard.lucene
+
+  - name: ocr_text                    # if separate OCR output (optional)
+    type: String
+    searchable: true
+    filterable: false
+    retrievable: true
+    analyzer_name: standard.lucene
+
+  - name: video_url                   # for transcript/video chunks
+    type: String
+    searchable: false
+    filterable: false
+    retrievable: true
+
+  - name: image_path                  # if a text chunk references a figure
+    type: String
+    searchable: false
+    filterable: false
+    retrievable: true
+
+  - name: width
+    type: Int32
+    searchable: false
+    filterable: true
+    retrievable: true
+
+  - name: height
+    type: Int32
+    searchable: false
+    filterable: true
+    retrievable: true
+
+  - name: area
+    type: Int32
+    searchable: false
+    filterable: true
+    retrievable: true
+
+  - name: extra_metadata              # raw JSON blob for anything else
+    type: String
+    searchable: false
+    filterable: false
+    retrievable: true
+
+  # ─────────── Vector embedding ───────────
+  - name: contentVector
+    type: Collection
+    item_type: Single
+    searchable: true
+    filterable: false
+    retrievable: false
+    vector:
+      dimensions: 1536
+      profile_name: hnsw-profile
+
+vector_search:
+  algorithms:
+    - name: hnsw-config
+      kind: hnsw
+      parameters:
+        m: 20
+        efConstruction: 400
+        efSearch: 40
+  profiles:
+    - name: hnsw-profile
+      algorithm_configuration_name: hnsw-config
+      vectorizer_name: azure-oai
+  vectorizers:
+    - name: azure-oai
+      kind: azureOpenAI
+      parameters:
+        resource_url: https://<your-resource>.openai.azure.com/
+        deployment_name: text-embedding-ada-002
+        model_name: text-embedding-ada-002
+        api_key: <YOUR_AZURE_OPENAI_KEY>
+
+semantic_search:
+  configurations:
+    - name: default-semantic
+      prioritized_fields:
+        title_field: section_title
+        content_fields:
+          - text
+          - ocr_text
+        # Optional keywords/topics can help
+        keywords_fields:
+          - topic
+          - keyword
