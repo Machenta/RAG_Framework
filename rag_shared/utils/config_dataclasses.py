@@ -109,6 +109,7 @@ class LLMConfig(BaseModel):
     api_base_url:   str
     api_version:    str
     api_key:        str = Field(default="", repr=False)
+    use_managed_identity: bool = Field(default=True, description="Use System-Assigned Managed Identity for authentication")
 
     processor:      Optional[str]           = None
     prompts:        Optional[PromptConfig]  = None
@@ -123,8 +124,9 @@ class EmbeddingModelConfig(BaseModel):
     deployment:  str
     model_name:  str 
     api_version: str
-    api_key:     str = Field(default="", repr=False)      # secret
+    api_key:     str = Field(default="", repr=False)      # secret - fallback only
     endpoint:    Optional[str] = None
+    use_managed_identity: bool = Field(default=True, description="Use System-Assigned Managed Identity for authentication")
 
 
 # ── level 2:  index settings ──────────────────────────────────────
@@ -152,10 +154,11 @@ class IndexConfig(BaseModel):
 class AiSearchConfig(BaseModel):
     index:   IndexConfig 
     endpoint: str
-    api_key: str = Field(default="", repr=False)          # secret
+    api_key: str = Field(default="", repr=False)          # secret - fallback only
+    use_managed_identity: bool = Field(default=True, description="Use System-Assigned Managed Identity for authentication")
     # Fields to extract as metadata from search results
     metadata_fields: Optional[List[str]] = Field(
-        default_factory=lambda: ["video_url", "timestamp", "filename"],
+        default_factory=lambda: ["filename", "video_url", "timestamp", "speaker", "topic", "keyword", "questionoranswer"],
         description="List of fields to extract as metadata from search results"
     )
 

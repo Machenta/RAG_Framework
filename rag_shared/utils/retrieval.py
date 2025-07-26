@@ -3,9 +3,11 @@ import openai
 from typing import Optional, Any, Dict, List, Final
 from typing import cast
 from azure.core.credentials import AzureKeyCredential
+from azure.identity import DefaultAzureCredential
 from azure.core.exceptions import ResourceNotFoundError
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.models import VectorQuery
+import logging
 
 from azure.search.documents.models import VectorizedQuery, VectorizableTextQuery, VectorQuery
 from azure.search.documents import SearchClient
@@ -29,8 +31,8 @@ class Retrieval:
         llm_cfg = config.app.llm
         index_cfg = ai_search_cfg.index # type: ignore
 
-        # Azure Cognitive Search credentials and endpoints
-        self.cred: AzureKeyCredential = AzureKeyCredential(ai_search_cfg.api_key) # type: ignore
+        # Azure AI Search credentials - Use Managed Identity as primary
+        self.cred = self._get_search_credential(ai_search_cfg)
         self._index_cfg: Final[IndexConfig] = index_cfg
 
         self.index_client = SearchIndexClient(
@@ -47,20 +49,109 @@ class Retrieval:
             credential=self.cred,
         )
 
-        # Azure OpenAI embeddings client
-        self.openai_embeddings_client = openai.AzureOpenAI(
-            api_key=index_cfg.embedding.api_key, # type: ignore
-            api_version=index_cfg.embedding.api_version,    # type: ignore
-            azure_endpoint=index_cfg.embedding.url, # type: ignore
-            azure_deployment=index_cfg.embedding.deployment # type: ignore
-        )
-        # Azure OpenAI chat completions client
-        self.openai_client = openai.AzureOpenAI(
-            api_key=llm_cfg.api_key, # type: ignore
-            api_version=llm_cfg.api_version, # type: ignore
-            azure_endpoint=llm_cfg.api_base_url, # type: ignore
-            azure_deployment=llm_cfg.deployment # type: ignore
-        )
+        # Azure OpenAI clients - Use Managed Identity as primary
+        self.openai_embeddings_client = self._get_openai_embeddings_client(index_cfg)
+        self.openai_client = self._get_openai_chat_client(llm_cfg)
+
+    def _get_search_credential(self, ai_search_cfg):
+        """
+        Get Azure AI Search credential using Managed Identity as primary method.
+        Falls back to API key if managed identity is not available or fails.
+        """
+        # Check if we should use managed identity (recommended for production)
+        use_managed_identity = getattr(ai_search_cfg, 'use_managed_identity', True)
+        
+        if use_managed_identity:
+            try:
+                credential = DefaultAzureCredential()
+                # Test the credential by attempting to get a token
+                token = credential.get_token("https://search.azure.com/.default")
+                if token:
+                    logging.info("✅ Using System-Assigned Managed Identity for Azure AI Search")
+                    return credential
+            except Exception as e:
+                logging.warning(f"⚠️ Managed Identity failed for Azure AI Search: {e}")
+                logging.info("🔄 Falling back to API key authentication")
+        
+        # Fallback to API key
+        if hasattr(ai_search_cfg, 'api_key') and ai_search_cfg.api_key:
+            logging.info("🔑 Using API key for Azure AI Search authentication")
+            return AzureKeyCredential(ai_search_cfg.api_key)
+        
+        raise ValueError("No valid authentication method available for Azure AI Search. "
+                        "Ensure either Managed Identity is configured or API key is provided.")
+
+    def _get_openai_embeddings_client(self, index_cfg):
+        """
+        Get Azure OpenAI embeddings client using Managed Identity as primary method.
+        """
+        use_managed_identity = getattr(index_cfg.embedding, 'use_managed_identity', True)
+        
+        if use_managed_identity:
+            try:
+                credential = DefaultAzureCredential()
+                token = credential.get_token("https://cognitiveservices.azure.com/.default")
+                if token:
+                    logging.info("✅ Using System-Assigned Managed Identity for Azure OpenAI Embeddings")
+                    # Extract base endpoint from URL if it contains /openai path
+                    base_endpoint = index_cfg.embedding.url.split('/openai')[0] if '/openai' in index_cfg.embedding.url else index_cfg.embedding.url
+                    return openai.AzureOpenAI(
+                        azure_ad_token_provider=lambda: credential.get_token("https://cognitiveservices.azure.com/.default").token,
+                        api_version=index_cfg.embedding.api_version,
+                        azure_endpoint=base_endpoint,
+                        azure_deployment=index_cfg.embedding.deployment
+                    )
+            except Exception as e:
+                logging.warning(f"⚠️ Managed Identity failed for Azure OpenAI Embeddings: {e}")
+                logging.info("🔄 Falling back to API key authentication")
+        
+        # Fallback to API key
+        if hasattr(index_cfg.embedding, 'api_key') and index_cfg.embedding.api_key:
+            logging.info("🔑 Using API key for Azure OpenAI Embeddings authentication")
+            return openai.AzureOpenAI(
+                api_key=index_cfg.embedding.api_key,
+                api_version=index_cfg.embedding.api_version,
+                azure_endpoint=index_cfg.embedding.url,
+                azure_deployment=index_cfg.embedding.deployment
+            )
+        
+        raise ValueError("No valid authentication method available for Azure OpenAI Embeddings. "
+                        "Ensure either Managed Identity is configured or API key is provided.")
+
+    def _get_openai_chat_client(self, llm_cfg):
+        """
+        Get Azure OpenAI chat client using Managed Identity as primary method.
+        """
+        use_managed_identity = getattr(llm_cfg, 'use_managed_identity', True)
+        
+        if use_managed_identity:
+            try:
+                credential = DefaultAzureCredential()
+                token = credential.get_token("https://cognitiveservices.azure.com/.default")
+                if token:
+                    logging.info("✅ Using System-Assigned Managed Identity for Azure OpenAI Chat")
+                    return openai.AzureOpenAI(
+                        azure_ad_token_provider=lambda: credential.get_token("https://cognitiveservices.azure.com/.default").token,
+                        api_version=llm_cfg.api_version,
+                        azure_endpoint=llm_cfg.api_base_url,
+                        azure_deployment=llm_cfg.deployment
+                    )
+            except Exception as e:
+                logging.warning(f"⚠️ Managed Identity failed for Azure OpenAI Chat: {e}")
+                logging.info("🔄 Falling back to API key authentication")
+        
+        # Fallback to API key
+        if hasattr(llm_cfg, 'api_key') and llm_cfg.api_key:
+            logging.info("🔑 Using API key for Azure OpenAI Chat authentication")
+            return openai.AzureOpenAI(
+                api_key=llm_cfg.api_key,
+                api_version=llm_cfg.api_version,
+                azure_endpoint=llm_cfg.api_base_url,
+                azure_deployment=llm_cfg.deployment
+            )
+        
+        raise ValueError("No valid authentication method available for Azure OpenAI Chat. "
+                        "Ensure either Managed Identity is configured or API key is provided.")
 
     def _document_exists(self, doc_id: str) -> bool:
         """

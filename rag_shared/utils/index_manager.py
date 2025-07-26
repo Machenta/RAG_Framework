@@ -1,11 +1,13 @@
 from __future__ import annotations
 import json
+import logging
 from pathlib import Path
 from typing import Any, Dict, Optional, Union, cast
 import os
 
 import yaml
 from azure.core.credentials import AzureKeyCredential
+from azure.identity import DefaultAzureCredential
 from azure.search.documents.indexes import SearchIndexClient, SearchIndexerClient
 from azure.search.documents.indexes.models import (
     SearchField, SearchFieldDataType,
@@ -47,7 +49,7 @@ class IndexManager:
         self.schema = self._load_index_file()
 
         # ------ 2.  Azure clients ---------------------------------------
-        cred      = AzureKeyCredential(config.app.ai_search.api_key)  # type: ignore
+        cred = self._get_search_credential(config.app.ai_search)
         endpoint  = config.app.ai_search.endpoint  # type: ignore
         self.client         = SearchIndexClient(endpoint=endpoint, credential=cred)
         self.indexer_client = SearchIndexerClient(endpoint=endpoint, credential=cred)
@@ -56,6 +58,33 @@ class IndexManager:
         self.index_name    = index_cfg.name
         self.skillset_name = index_cfg.skillset_name
         self.indexer_name  = index_cfg.indexer_name
+
+    def _get_search_credential(self, ai_search_cfg):
+        """
+        Get Azure AI Search credential using Managed Identity as primary method.
+        Falls back to API key if managed identity is not available or fails.
+        """
+        use_managed_identity = getattr(ai_search_cfg, 'use_managed_identity', True)
+        
+        if use_managed_identity:
+            try:
+                credential = DefaultAzureCredential()
+                # Test the credential by attempting to get a token
+                token = credential.get_token("https://search.azure.com/.default")
+                if token:
+                    logging.info("✅ Using System-Assigned Managed Identity for Azure AI Search (IndexManager)")
+                    return credential
+            except Exception as e:
+                logging.warning(f"⚠️ Managed Identity failed for Azure AI Search (IndexManager): {e}")
+                logging.info("🔄 Falling back to API key authentication")
+        
+        # Fallback to API key
+        if hasattr(ai_search_cfg, 'api_key') and ai_search_cfg.api_key:
+            logging.info("🔑 Using API key for Azure AI Search authentication (IndexManager)")
+            return AzureKeyCredential(ai_search_cfg.api_key)
+        
+        raise ValueError("No valid authentication method available for Azure AI Search (IndexManager). "
+                        "Ensure either Managed Identity is configured or API key is provided.")
 
     # ------------------------------------------------------------------ #
     # Internal loader utilities                                          #
