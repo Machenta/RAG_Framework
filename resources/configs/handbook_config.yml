@@ -62,6 +62,8 @@ app:
     api_type: Azure
     api_version: 2024-12-01-preview
     api_base_url: https://nunot-masez9tz-eastus2.cognitiveservices.azure.com/
+    use_managed_identity: true      # Primary authentication method
+    api_key: ""                     # Fallback only (filled from Key Vault if needed)
 
     prompts:
       # Source can be 'filesystem' or 'blob_storage'
@@ -95,7 +97,8 @@ app:
 
   ai_search:
     endpoint: "https://ragtests.search.windows.net"
-    api_key: ""           # <- pulled from Key Vault at runtime
+    use_managed_identity: true      # Primary authentication method
+    api_key: ""           # <- Fallback only (pulled from Key Vault at runtime)
 
     index:
       name:            "unified_text_index"
@@ -119,7 +122,8 @@ app:
         deployment:   "text-embedding-ada-002"
         model_name:   "text-embedding-ada-002"
         api_version:  "2023-05-15"
-        api_key: ""       # <- also filled from Key Vault
+        use_managed_identity: true  # Primary authentication method
+        api_key: ""       # <- Fallback only (filled from Key Vault if needed)
 
   form_recognizer:
     endpoint:      "https://pdf-analyser.cognitiveservices.azure.com/"

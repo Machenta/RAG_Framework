@@ -1,6 +1,9 @@
 import asyncio
+import logging
+import os
 from typing import List, Dict, Any, Optional
 import openai
+from azure.identity import DefaultAzureCredential
 from openai.types.chat import (
     ChatCompletionSystemMessageParam,
     ChatCompletionUserMessageParam,
@@ -34,18 +37,12 @@ class AzureOpenAIModel(LLMModel):
         # Assert the class attributes and not the config attributes
         assert self.config.app is not None, "Config.app is required"
         assert self.config.app.llm is not None, "LLM config is required in config.app.llm"
-        assert self.config.app.llm.api_key, "LLM api_key must be provided"
         assert self.config.app.llm.api_version, "LLM api_version must be provided"
-        assert self.config.app.llm.endpoint, "LLM endpoint must be provided"
         assert self.config.app.llm.deployment, "LLM deployment must be provided"
         assert self.config.app.llm.api_base_url, "LLM api_base_url must be provided"
 
-        self.client = openai.AzureOpenAI(
-            api_key          = self.config.app.llm.api_key,
-            api_version      = self.config.app.llm.api_version,
-            azure_endpoint   = self.config.app.llm.api_base_url,
-            azure_deployment = self.config.app.llm.deployment
-        )
+        # Initialize Azure OpenAI client with managed identity support
+        self.client = self._get_openai_client(self.config.app.llm)
         self.defaults = {
             "max_tokens":        default_max_tokens,
             "temperature":       default_temperature,
@@ -55,6 +52,42 @@ class AzureOpenAIModel(LLMModel):
         }
 
         
+
+    def _get_openai_client(self, llm_cfg):
+        """
+        Get Azure OpenAI client using Managed Identity as primary method.
+        Falls back to API key if managed identity is not available or fails.
+        """
+        use_managed_identity = getattr(llm_cfg, 'use_managed_identity', True)
+        
+        if use_managed_identity:
+            try:
+                credential = DefaultAzureCredential()
+                token = credential.get_token("https://cognitiveservices.azure.com/.default")
+                if token:
+                    logging.info("✅ Using System-Assigned Managed Identity for Azure OpenAI Chat")
+                    return openai.AzureOpenAI(
+                        azure_ad_token_provider=lambda: credential.get_token("https://cognitiveservices.azure.com/.default").token,
+                        api_version=llm_cfg.api_version,
+                        azure_endpoint=llm_cfg.api_base_url,
+                        azure_deployment=llm_cfg.deployment
+                    )
+            except Exception as e:
+                logging.warning(f"⚠️ Managed Identity failed for Azure OpenAI Chat: {e}")
+                logging.info("🔄 Falling back to API key authentication")
+        
+        # Fallback to API key
+        if hasattr(llm_cfg, 'api_key') and llm_cfg.api_key:
+            logging.info("🔑 Using API key for Azure OpenAI Chat authentication")
+            return openai.AzureOpenAI(
+                api_key=llm_cfg.api_key,
+                api_version=llm_cfg.api_version,
+                azure_endpoint=llm_cfg.api_base_url,
+                azure_deployment=llm_cfg.deployment
+            )
+        
+        raise ValueError("No valid authentication method available for Azure OpenAI Chat. "
+                        "Ensure either Managed Identity is configured or API key is provided.")
 
     async def generate(
         self,
