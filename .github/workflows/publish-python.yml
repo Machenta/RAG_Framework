@@ -36,7 +36,7 @@ jobs:
       # 5) Publish to GitHub Packages (your OWNER is Machenta)
       - name: Publish package
         run: |
-          python -m twine upload --repository-url https://pypi.pkg.github.com/Machenta dist/*
+          python -m twine upload --repository-url https://pypi.pkg.github.com/Machenta dist/* --verbose
         env:
           TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
           TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
