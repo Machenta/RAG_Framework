@@ -34,13 +34,9 @@ jobs:
         run: python -m build
 
       # 5) Publish to GitHub Packages (your OWNER is Machenta)
-      - name: Publish to GitHub Packages
-        env:
-          # Use your GitHub username or org here
-          TWINE_USERNAME: Machenta
-          # GITHUB_TOKEN is auto‑provided by GitHub Actions
-          TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish package
         run: |
-          twine upload \
-            --repository-url https://pypi.pkg.github.com/Machenta \
-            dist/*
+          python -m twine upload --repository-url https://pypi.pkg.github.com/Machenta dist/*
+        env:
+          TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
+          TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
