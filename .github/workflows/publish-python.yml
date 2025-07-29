@@ -42,5 +42,5 @@ jobs:
           TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
           twine upload \
-            --repository-url https://upload.pypi.pkg.github.com/Machenta \
+            --repository-url https://pypi.pkg.github.com/Machenta \
             dist/*
