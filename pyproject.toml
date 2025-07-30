@@ -40,7 +40,7 @@ Homepage = "https://github.com/nunot/RAG_Framework"
 Repository = "https://github.com/nunot/RAG_Framework"
 
 [tool.setuptools]
-packages = ["rag_shared", "rag_api_core"]  # Your existing packages
+packages = ["rag_shared"]  # Your existing packages
 include-package-data = true
 
 [tool.setuptools.package-data]
