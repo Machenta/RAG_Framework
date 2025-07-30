@@ -1,10 +1,27 @@
 [build-system]
-requires      = ["setuptools>=65", "wheel"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
 [project]
-name = "rag_shared"
-version = "0.1.4"
-requires-python = ">=3.10"
+name = "rag_shared"  # Keep your existing package name
+version = "0.1.4"    # Keep your current version
+description = "Azure-native RAG Framework with System-Assigned Managed Identity support"
+readme = "README.md"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"},  # Update with your info
+]
+license = {text = "MIT"}  # Or your chosen license
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+requires-python = ">=3.9"
+
+# Keep your existing dependencies
 dependencies = [
   "PyYAML",
   "azure-identity",
@@ -18,11 +35,17 @@ dependencies = [
   "dacite",
 ]
 
-[tool.setuptools]
-include-package-data = true                     # keep non-Python assets
+[project.urls]
+Homepage = "https://github.com/nunot/RAG_Framework"
+Repository = "https://github.com/nunot/RAG_Framework"
 
-# Automatically find all sub-packages under project root
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["rag_shared", "rag_shared.*"]
-exclude = ["rag_shared.resources*", "rag_shared.tests*"]
+[tool.setuptools]
+packages = ["rag_shared", "rag_api_core"]  # Your existing packages
+include-package-data = true
+
+[tool.setuptools.package-data]
+rag_shared = ["**/*.yml", "**/*.yaml", "**/*.json"]
+
+# This is the key addition to fix the twine warning
+[tool.setuptools.dynamic]
+readme = {file = ["README.md"], content-type = "text/markdown"}
